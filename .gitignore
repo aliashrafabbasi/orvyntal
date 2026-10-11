@@ -17,3 +17,26 @@ dist/
 .coverage
 .coverage.*
 htmlcov/
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Private keys and certificates
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Logs and runtime output
+*.log
+
+# Local databases
+*.sqlite3
+*.db
+
+# Editor and operating-system files
+.vscode/
+.idea/
+.DS_Store
