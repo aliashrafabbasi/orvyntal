@@ -8,7 +8,7 @@ Repository: <https://github.com/aliashrafabbasi/orvyntal> · Owner: `aliashrafab
 
 ## Project status
 
-> **ORVYNTAL is in its architectural and planning stage.** This document describes the intended vision, architecture, and roadmap. Unless a component is marked `Implemented` or `Verified` in the [feature matrix](#8-feature-status-matrix) with repository evidence, it does **not** exist yet. No commands, APIs, or metrics in this document should be assumed to work until they are listed under verified instructions.
+> **ORVYNTAL's AI capabilities are in the architectural and planning stage; its initial Python packaging and test foundation have been implemented.** This document describes the intended vision, architecture, and roadmap. Feature statuses must reflect actual implementation and verification evidence. Planned AI components must not be assumed to exist or work.
 
 Status labels used throughout:
 
@@ -148,7 +148,7 @@ The stack is intended, **not installed or implemented**. Dependencies are added 
 | mypy | Static typing | Quality | Subsystem | Planned | Where practical. |
 | pip-audit | Dependency vulnerability checks | Quality | Optional | Planned | Where compatible. |
 | pre-commit | Local quality hooks | Quality | Optional | Planned | Optional convenience. |
-| GitHub Actions | CI | Quality | Core | Planned | Automated checks. |
+| GitHub Actions | CI | Quality | Core | Implemented | Workflow added for tests, lint, and formatting; remote run pending. |
 | `logging` (stdlib) | Structured logging conventions | Observability | Core | Planned | No extra dependency. |
 | Pydantic Settings, python-dotenv | Typed config, `.env` loading | Config | Optional | Planned | If configuration complexity justifies. |
 | OpenTelemetry, Prometheus-compatible metrics | Tracing and metrics | Observability | Future | Planned | Only if required. |
@@ -550,7 +550,7 @@ sequenceDiagram
 
 | Component | Planned capability | Status | Verification |
 |---|---|---|---|
-| Foundation | Packaging, configuration, tests | Planned | Automated tests |
+| Foundation | Minimal Python packaging and automated tests | Implemented | Local verification: 2 pytest tests, Ruff lint, and Ruff formatting pass; clean-checkout verification pending |
 | Analytics | Data profiling and EDA | Planned | Analytics fixtures |
 | Statistics | Descriptive and inferential analysis | Planned | Statistical tests |
 | ML | Training and evaluation | Planned | ML tests |
@@ -562,7 +562,7 @@ sequenceDiagram
 | Agents | Policy-controlled tools | Planned | Permission tests |
 | API | FastAPI endpoints | Planned | API tests |
 | Persistence | Relational metadata store | Planned | Integration tests |
-| CI | Automated checks | Planned | GitHub Actions |
+| CI | GitHub Actions workflow for tests, lint, and formatting | Implemented | Workflow file added; local tests, Ruff, and package build pass; workflow validation and GitHub Actions run pending |
 | Dashboard | React and TypeScript UI | Planned (future) | None |
 
 Statuses change only with evidence from real files, tests, and workflows.
@@ -571,7 +571,7 @@ Statuses change only with evidence from real files, tests, and workflows.
 
 ### Current structure
 
-Not verified at the time of writing. Update this section from the actual repository (for example with `git ls-files`) before publishing.
+The repository contains the canonical `README.md`, Python package metadata in `pyproject.toml`, the `src/orvyntal/` package, and automated tests under `tests/`. The initial foundation is intentionally minimal. A GitHub Actions workflow for Cluster 0.6 is present; workflow-specific validation and a successful remote run remain pending.
 
 ### Proposed future structure (illustrative, not existing)
 
@@ -687,24 +687,104 @@ No scores, coverage numbers, or benchmarks are claimed. All metrics must be meas
 
 ## 13. Installation and quickstart
 
-**There is no verified installation procedure yet.** When code exists, this section will contain tested instructions for: supported Python version, virtual environment (`venv` + `pip`), dependency installation, environment configuration, running tests, starting the dev server, and a small end-to-end example.
+**Initial development setup** (Python 3.12+ and `uv` required):
 
-Setup principles: keep the first install lightweight; do not install PyTorch, all provider SDKs, or databases up front; prefer CPU-only, mock-provider workflows; clearly mark which features require provider API keys.
+```bash
+uv venv
+uv pip install --python .venv/bin/python -e '.[dev]'
+.venv/bin/python -m pytest -q
+.venv/bin/ruff check .
+.venv/bin/ruff format --check .
+```
+
+The package and these foundation checks have previously passed locally. Re-run them after changes; this does not imply that the future AI capabilities are implemented. Keep the initial install lightweight, defer PyTorch, provider SDKs, and databases until their relevant clusters, and document credential or network requirements when introduced.
 
 ## 14. Testing
 
-Planned approach: `pytest` for unit, integration, API, and end-to-end tests; deterministic fixtures and mock provider adapters; no paid API, private dataset, or GPU required by default; Ruff and mypy in CI; coverage measured with `pytest-cov` and reported only as measured.
+Current quality baseline: `pytest` for automated tests and Ruff for linting and formatting. The initial package tests require no paid API, private dataset, GPU, or external service. GitHub Actions CI is being introduced in Cluster 0.6. `mypy` and `pytest-cov` are future options, not currently configured checks; coverage must not be reported until measured.
 
 ## 15. Contributing
 
-- Branch-based development with small, focused commits.
-- Tests for new features and bug fixes.
-- Run formatting and linting before committing.
-- Justify new dependencies.
-- Update documentation alongside code.
-- Record significant decisions as architecture decision records in `docs/decisions/`.
-- Never commit secrets or private datasets.
-- Report security issues privately once a `SECURITY.md` exists; until then, contact the repository owner through GitHub.
+ORVYNTAL is developed through dependency-ordered milestones, each divided into
+small, verifiable clusters. A milestone plan defines its purpose, dependencies,
+clusters, interfaces, resource constraints, risks, and release gate before
+implementation begins.
+
+### Engineering hierarchy
+
+**Milestone → Cluster → Task → Test → Acceptance criteria**
+
+- **Milestone:** a coherent capability or engineering outcome with an explicit
+  integration and completion gate.
+- **Cluster:** a bounded unit of work with defined scope, dependencies,
+  contracts, risks, tests, and measurable acceptance criteria.
+- **Task:** a small implementation or verification action within one cluster.
+- **Test:** repeatable evidence that specified behaviour and failure cases work.
+- **Acceptance criteria:** observable conditions that must pass before a cluster
+  can be marked complete.
+
+### Cluster lifecycle
+
+1. Inspect the repository, current interfaces, Git state, and relevant tests.
+2. Define the cluster scope, non-goals, dependencies, contracts, and acceptance
+   criteria before editing.
+3. Implement the smallest coherent patch; avoid unrelated refactors.
+4. Review the diff for correctness, compatibility, security, and scope.
+5. Run the available targeted tests and quality checks; add tests when the
+   cluster introduces testable behaviour.
+6. Verify acceptance criteria and record any limitations or deferred work.
+7. Integrate completed clusters at the milestone gate; verify cross-cluster
+   behaviour before declaring the milestone complete.
+
+A cluster passing its own tests does not automatically complete its milestone.
+A milestone requires integration checks, regression checks, documentation
+review, and its stated release criteria.
+
+### Repository and compatibility rules
+
+- Use branch-based development and small, focused commits; run the configured
+  formatting, linting, and relevant tests before requesting commit approval.
+- Inspect before changing files; preserve existing architecture decisions unless
+  evidence justifies a documented change.
+- Keep domain logic independent of API frameworks and infrastructure adapters.
+- Add dependencies only when a specific cluster needs them; prefer lightweight,
+  CPU-first development and deterministic tests that need no paid API.
+- Do not claim a feature is implemented or verified without repository evidence.
+- Preserve existing interfaces by default. API, schema, or behavioural
+  incompatibilities require an explicit migration and versioning plan.
+- Never commit secrets, private datasets, generated caches, or local runtime
+  artifacts.
+- Avoid broad staging commands such as `git add .` and `git add -A`; stage
+  only explicitly reviewed paths.
+- Do not create commits or push changes without the user's explicit approval.
+- Keep patches focused and reversible; do not perform destructive cleanup or
+  rewrite unrelated history without approval.
+- Update documentation alongside implementation, and record significant
+  architectural decisions when the relevant structure exists.
+- If a required check cannot run, report it as unverified rather than implying
+  success.
+
+### Local resource policy
+
+The primary development target is a CPU-only laptop with four logical CPU
+threads and approximately 16 GiB RAM. Keep the foundation lightweight. Do not
+install PyTorch, vector databases, provider SDK collections, or external
+services before the cluster that needs them. Prefer mocks and small deterministic
+fixtures; document any optional network, credential, or hardware requirements.
+
+### Cluster definition of done
+
+A cluster is complete only when its agreed scope is implemented, its diff is
+reviewed, relevant checks pass, acceptance criteria are satisfied, documentation
+is accurate, and unresolved limitations are recorded. Completion does not
+authorize a commit or push.
+
+### Security reporting
+
+Never commit secrets or private datasets. Until a dedicated `SECURITY.md`
+exists, report security concerns privately through the repository owner's
+GitHub contact route.
+
 
 ## 16. Known limitations
 
@@ -717,19 +797,46 @@ Planned approach: `pytest` for unit, integration, API, and end-to-end tests; det
 
 ## 17. Roadmap
 
-Dependency-ordered, with no dates. A phase is complete only with repository evidence.
+The roadmap is dependency-ordered, not calendar-driven. Milestones are completed
+only when their acceptance gates have repository evidence. Clusters are planned
+and verified independently; the milestone gate checks their integration.
 
-| Phase | Prerequisites | Deliverables | Acceptance criteria |
+### Milestone 0 — Engineering foundation
+
+**Goal:** establish a maintainable, testable, reproducible project baseline
+before building AI capabilities.
+
+| Cluster | Scope | Acceptance criteria |
+|---|---|---|
+| 0.1 Repository audit | Inspect Git state, tracked files, project identity, and documentation baseline; identify and remove the redundant README duplicate | Canonical README preserved; repository state and diff verified; no unrelated files changed |
+| 0.2 Documentation and workflow | Document milestone/cluster hierarchy, lifecycle, safety rules, and completion gates | Roadmap and contributing guidance agree; current status is factual; Markdown and Mermaid structure remain intact |
+| 0.3 Python packaging | Choose the supported Python range and minimal `pyproject.toml` metadata; define dependency groups only as justified | Clean environment can install the base project; declared metadata and dependency policy are validated |
+| 0.4 Structure and Git hygiene | Introduce only necessary source/test directories and appropriate ignore rules | Package layout is importable; generated files and secrets are excluded; unrelated local files remain untouched |
+| 0.5 Test and quality baseline | Add lightweight test configuration and focused quality tooling | Deterministic tests run locally; configured checks have documented commands; failures are actionable |
+| 0.6 Continuous integration | Add a minimal CI workflow for the supported Python environment | CI checks out a clean repository and runs the agreed quality checks successfully |
+
+**Milestone 0 integration gate:** verify packaging from a clean checkout, run
+all foundation tests and configured quality checks, inspect the complete diff,
+and confirm that setup instructions match the repository. No AI feature is
+required to pass this milestone.
+
+### Subsequent milestones
+
+| Milestone | Dependencies | Scope | Completion gate |
 |---|---|---|---|
-| 1. Foundation | None | Package layout, `pyproject.toml`, config, Git hygiene, basic tests, CI, coding standards | CI runs lint and tests on a clean checkout |
-| 2. Data and statistics | 1 | Sample datasets, NumPy/Pandas workflows, validation, EDA, statistics, deterministic reports | Same input yields identical reports; invalid input handled |
-| 3. Classical ML | 2 | Reusable preprocessing, baselines, evaluation, reproducible experiments, artifact management | Baseline vs. candidate comparison; seeded reproducibility; no leakage tests pass |
-| 4. Deep learning | 3 | Scoped PyTorch experiment, training and evaluation, CPU defaults | Runs on CPU; compared against a classical baseline |
-| 5. LLM foundation | 1 | Provider interface, prompt templates, structured-output validation, mock provider, usage/error tracking | Tests pass with no network or API key |
-| 6. Documents and RAG | 5 | Extraction, chunking, metadata, embeddings, FAISS, retrieval, citations, RAG evaluation | Citation validation tests; abstention on insufficient evidence; retrieval metrics on a labelled set |
-| 7. Agents and guardrails | 5 | Workflow state, tool registry, policy engine, bounded execution, approval, audit traces | Denied actions never execute; limits enforced by tests |
-| 8. FastAPI and persistence | 2–7 as needed | Routes, schemas, persistence if justified, API tests, error handling | API tests pass; contracts versioned |
-| 9. Integration and release | 8 | Cross-subsystem and security tests, validated docs, end-to-end examples, release preparation | Documented examples run; security tests pass |
+| 1. Data intelligence and statistics | Milestone 0 | CSV ingestion, validation, profiling, EDA, descriptive statistics, deterministic reports | Valid and invalid inputs are tested; repeatable inputs produce reproducible outputs |
+| 2. Classical machine learning | Milestone 1 | Preprocessing, baselines, classification/regression/clustering, evaluation, experiment metadata, artifact handling | Seeded reproducibility and leakage safeguards are tested; candidates are compared with baselines |
+| 3. CPU-first deep learning | Milestone 2 | A scoped PyTorch experiment, training loop, evaluation, and resource limits | CPU execution is verified and results are compared with a classical baseline |
+| 4. LLM foundation | Milestone 0 | Provider interfaces, prompts, structured-output validation, mock provider, timeout/error handling, usage metadata | Tests pass without network access, credentials, or a paid API |
+| 5. Document intelligence and RAG | Milestones 0 and 4 | Document validation, extraction, chunking, metadata, embeddings, FAISS retrieval, citations, groundedness evaluation | Retrieval metrics are measured on a labelled set; citation checks pass; insufficient evidence triggers abstention |
+| 6. Controlled agents | Milestone 4 | Workflow state, typed tool registry, policy checks, bounded execution, approval, audit traces | Denied actions never execute; permissions and execution limits are tested |
+| 7. API and persistence | Milestones 1–6 as needed | FastAPI endpoints, versioned schemas, justified persistence, error handling | API contracts and integration tests pass; migrations are documented where needed |
+| 8. Integration and release | Relevant prior milestones | Cross-module regression, security tests, examples, documentation, release preparation | Clean-checkout examples run; release checks and documented acceptance gates pass |
+
+Milestones may proceed independently only when their stated dependencies and
+interfaces permit it. The release gate verifies the integrated system rather
+than assuming that individually passing clusters guarantee end-to-end behaviour.
+
 
 ## 18. Future directions
 
