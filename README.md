@@ -6,21 +6,6 @@ Repository: <https://github.com/aliashrafabbasi/orvyntal> · Owner: `aliashrafab
 
 ---
 
-## Project status
-
-> **ORVYNTAL's AI capabilities are in the architectural and planning stage; its initial Python packaging and test foundation have been implemented.** This document describes the intended vision, architecture, and roadmap. Feature statuses must reflect actual implementation and verification evidence. Planned AI components must not be assumed to exist or work.
-
-Status labels used throughout:
-
-| Label | Meaning |
-|---|---|
-| `Planned` | Designed and documented; no working code. |
-| `In Progress` | Code exists but is incomplete or untested. |
-| `Implemented` | Code exists and runs, but is not yet covered by adequate automated tests. |
-| `Verified` | Implemented and covered by passing automated tests and/or CI, with evidence in the repository. |
-
-There is no deadline or calendar schedule. Work is organized by dependencies and measurable milestones (see [Roadmap](#17-roadmap)).
-
 ## Table of contents
 
 1. [Product overview](#1-product-overview)
