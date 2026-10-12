@@ -84,7 +84,7 @@ All items below are **planned**.
 
 ## 5. Technology stack and rationale
 
-The stack is intended, **not installed or implemented**. Dependencies are added when their subsystem is built.
+The full target stack is not yet implemented. The table distinguishes the existing API foundation from planned subsystems; dependencies are added as each subsystem is built.
 
 ### 5.1 Dependency categories
 
@@ -98,7 +98,7 @@ The stack is intended, **not installed or implemented**. Dependencies are added 
 
 | Technology | Purpose | Subsystem | Category | Status | Why |
 |---|---|---|---|---|---|
-| Python | Primary language | All | Core | Planned | Mature ecosystem for data, ML, LLMs, and web APIs. |
+| Python | Primary language | All | Core | Implemented | Mature ecosystem for data, ML, LLMs, and web APIs. |
 | NumPy | Arrays, vectorized math, vector representation | Analytics, ML, vectors | Core | Planned | Foundation for numerical work. |
 | Pandas | Tabular ingestion, cleaning, analysis | Analytics | Core | Planned | Standard tabular toolkit. |
 | SciPy | Selected statistical and scientific functions | Statistics | Subsystem | Planned | Well-tested statistical routines. |
@@ -110,9 +110,9 @@ The stack is intended, **not installed or implemented**. Dependencies are added 
 | OpenAI API | Hosted LLM provider | LLM | Subsystem | Planned | One possible adapter. |
 | Anthropic API | Optional provider adapter | LLM | Optional | Planned | Provider independence. |
 | Groq API | Optional provider adapter | LLM | Optional | Planned | Provider independence where supported. |
-| Pydantic | Config, schemas, structured-output and tool-argument validation | All | Core | Planned | Typed validation at every boundary. |
+| Pydantic | Config, schemas, structured-output and tool-argument validation | All | Core | Implemented | Pydantic Settings validates runtime configuration; broader schemas remain planned. |
 | Jinja2 (or equivalent) | Prompt templates | LLM | Subsystem | Planned | Only if templating needs justify it. |
-| HTTPX | HTTP clients and API tests | LLM, API | Subsystem | Planned | Sync/async client, test client support. |
+| HTTPX2 | HTTP client support for the installed Starlette test-client stack | API tests | Development | Implemented | Used by the current passing API test suite. |
 | Tenacity (or small in-house retry) | Bounded retries | LLM | Optional | Planned | Avoid hand-rolled edge cases if complexity grows. |
 | Sentence Transformers | Local embeddings | Embeddings | Subsystem | Planned | Local, no paid API required. |
 | FAISS | Vector indexing and nearest-neighbour search | Vector store | Subsystem | Planned | Initial vector backend behind a project-owned interface. |
@@ -121,15 +121,15 @@ The stack is intended, **not installed or implemented**. Dependencies are added 
 | Beautiful Soup | HTML parsing | Ingestion | Optional | Planned | Only if HTML is supported. |
 | LangChain | Optional orchestration/integrations | Agents | Optional | Planned | Only where it shows measurable value; never a replacement for security or validation. |
 | asyncio | Asynchronous I/O | API, agents | Subsystem | Planned | Where I/O concurrency helps. |
-| FastAPI | REST API | API | Subsystem | Planned | Typed routes, OpenAPI generation. |
-| Uvicorn | ASGI server | API | Subsystem | Planned | Standard development server. |
+| FastAPI | REST API | API | Core | Implemented | Application factory, versioned health routes, and OpenAPI docs. |
+| Uvicorn | ASGI server | API | Core | Implemented | Runs the root `main.py` ASGI entry point. |
 | python-multipart | Upload handling | API | Subsystem | Planned | Required if form uploads are used. |
 | SQLAlchemy | Relational persistence abstraction | Persistence | Optional | Planned | Added only when persistence has a real use case. |
 | PostgreSQL | Relational database | Persistence | Optional | Planned | Planned production-grade store when justified. |
 | SQLite | Lightweight dev/test database | Persistence | Optional | Planned | Zero-setup testing. |
 | Alembic | Schema migrations | Persistence | Optional | Planned | Only if SQLAlchemy is adopted. |
-| pytest, pytest-cov | Tests and coverage | Quality | Core | Planned | Coverage is measured, not asserted. |
-| Ruff | Lint and format | Quality | Core | Planned | Single fast tool. |
+| pytest | Automated tests | Quality | Core | Implemented | Current suite passes locally; coverage tooling is not configured. |
+| Ruff | Lint and format | Quality | Core | Implemented | Lint and formatting checks pass locally. |
 | mypy | Static typing | Quality | Subsystem | Planned | Where practical. |
 | pip-audit | Dependency vulnerability checks | Quality | Optional | Planned | Where compatible. |
 | pre-commit | Local quality hooks | Quality | Optional | Planned | Optional convenience. |
@@ -137,8 +137,8 @@ The stack is intended, **not installed or implemented**. Dependencies are added 
 | `logging` (stdlib) | Structured logging conventions | Observability | Core | Planned | No extra dependency. |
 | Pydantic Settings, python-dotenv | Typed config, `.env` loading | Config | Optional | Planned | If configuration complexity justifies. |
 | OpenTelemetry, Prometheus-compatible metrics | Tracing and metrics | Observability | Future | Planned | Only if required. |
-| `pyproject.toml`, venv, pip | Packaging and environment | Tooling | Core | Planned | Single primary install path: venv + pip. |
-| uv | Fast environment tool | Tooling | Optional | Planned | Alternative, not required. |
+| `pyproject.toml`, venv, pip | Packaging and environment | Tooling | Core | Implemented | Project metadata and `requirements.txt` support the venv + pip workflow. |
+| uv | Fast environment tool | Tooling | Not used | Deferred | The documented project workflow uses Python `venv` and `pip`. |
 | Docker, Docker Compose | Reproducible packaging, multi-service dev | Tooling | Future | Planned | Only when justified. |
 | React, TypeScript, Vite, charting library | Dashboard | Frontend | Future | Planned | Built only after core and API stabilize. |
 
@@ -535,7 +535,7 @@ sequenceDiagram
 
 | Component | Planned capability | Status | Verification |
 |---|---|---|---|
-| Foundation | Minimal Python packaging and automated tests | Implemented | Local verification: 2 pytest tests, Ruff lint, and Ruff formatting pass; clean-checkout verification pending |
+| Foundation | Minimal Python packaging and automated tests | Implemented | Local verification: 20 pytest tests, Ruff lint, and Ruff formatting pass; clean-checkout verification pending |
 | Analytics | Data profiling and EDA | Planned | Analytics fixtures |
 | Statistics | Descriptive and inferential analysis | Planned | Statistical tests |
 | ML | Training and evaluation | Planned | ML tests |
@@ -545,9 +545,9 @@ sequenceDiagram
 | Vector search | FAISS indexing and retrieval | Planned | Retrieval tests |
 | RAG | Evidence-backed answers | Planned | Citation and evaluation tests |
 | Agents | Policy-controlled tools | Planned | Permission tests |
-| API | FastAPI endpoints | Planned | API tests |
+| API | FastAPI application and versioned health endpoints | Partially implemented | Live/ready endpoint tests; broader API capabilities remain planned |
 | Persistence | Relational metadata store | Planned | Integration tests |
-| CI | GitHub Actions workflow for tests, lint, and formatting | Implemented | Workflow file added; local tests, Ruff, and package build pass; workflow validation and GitHub Actions run pending |
+| CI | GitHub Actions workflow for tests, lint, and formatting | Configured; remote run unverified | Workflow file exists; local checks pass; successful GitHub Actions run remains unverified |
 | Dashboard | React and TypeScript UI | Planned (future) | None |
 
 Statuses change only with evidence from real files, tests, and workflows.
@@ -556,7 +556,7 @@ Statuses change only with evidence from real files, tests, and workflows.
 
 ### Current structure
 
-The repository contains the canonical `README.md`, Python package metadata in `pyproject.toml`, the `src/orvyntal/` package, and automated tests under `tests/`. The initial foundation is intentionally minimal. A GitHub Actions workflow for Cluster 0.6 is present; workflow-specific validation and a successful remote run remain pending.
+The repository uses root-level `main.py` as its sole ASGI entry point. Application code follows the `src/orvyntal/` layout, with the FastAPI application factory in `app.py`, versioned routes under `api/routes/`, settings under `config/`, and runtime/logging components under `core/`. Automated tests live under `tests/`. The GitHub Actions workflow is configured, but a successful remote run remains unverified.
 
 ### Proposed future structure (illustrative, not existing)
 
@@ -672,21 +672,37 @@ No scores, coverage numbers, or benchmarks are claimed. All metrics must be meas
 
 ## 13. Installation and quickstart
 
-**Initial development setup** (Python 3.12+ and `uv` required):
+**Initial development setup** (Python 3.12+):
 
 ```bash
-uv venv
-uv pip install --python .venv/bin/python -e '.[dev]'
-.venv/bin/python -m pytest -q
-.venv/bin/ruff check .
-.venv/bin/ruff format --check .
+git clone https://github.com/aliashrafabbasi/orvyntal.git
+cd orvyntal
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+```
+
+Run the API from the repository root:
+
+```bash
+uvicorn main:app --reload
+```
+
+API docs: <http://127.0.0.1:8000/docs>
+
+Run the local quality checks:
+
+```bash
+python -m pytest -q
+ruff check .
+ruff format --check .
 ```
 
 The package and these foundation checks have previously passed locally. Re-run them after changes; this does not imply that the future AI capabilities are implemented. Keep the initial install lightweight, defer PyTorch, provider SDKs, and databases until their relevant clusters, and document credential or network requirements when introduced.
 
 ## 14. Testing
 
-Current quality baseline: `pytest` for automated tests and Ruff for linting and formatting. The initial package tests require no paid API, private dataset, GPU, or external service. GitHub Actions CI is being introduced in Cluster 0.6. `mypy` and `pytest-cov` are future options, not currently configured checks; coverage must not be reported until measured.
+Current quality baseline: pytest for automated tests and Ruff for linting and formatting. The current suite passes locally (20 tests at the latest verification) without a paid API, private dataset, GPU, or external database. The GitHub Actions workflow is configured, but a successful remote run has not yet been verified. `mypy` and `pytest-cov` are not currently configured; coverage must not be reported until measured.
 
 ## 15. Contributing
 

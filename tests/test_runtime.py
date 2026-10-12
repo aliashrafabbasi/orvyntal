@@ -4,8 +4,8 @@ import logging
 
 import pytest
 
-from orvyntal.config import Settings
-from orvyntal.runtime import RuntimeContext, bootstrap_runtime
+from orvyntal.config.settings import Settings
+from orvyntal.core.runtime import RuntimeContext, bootstrap_runtime
 
 
 @pytest.fixture

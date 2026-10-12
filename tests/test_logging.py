@@ -4,8 +4,8 @@ import logging
 
 import pytest
 
-from orvyntal.config import Settings
-from orvyntal.logging import configure_logging
+from orvyntal.config.settings import Settings
+from orvyntal.core.logging import configure_logging
 
 
 @pytest.fixture

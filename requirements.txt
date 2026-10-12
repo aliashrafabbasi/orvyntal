@@ -1,0 +1,4 @@
+-e .
+httpx2
+pytest>=8.3
+ruff>=0.12

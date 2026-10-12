@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from orvyntal.config import Settings
+from orvyntal.config.settings import Settings
 
 
 def test_default_settings(monkeypatch: pytest.MonkeyPatch) -> None:

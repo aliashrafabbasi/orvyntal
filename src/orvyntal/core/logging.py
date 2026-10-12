@@ -2,7 +2,7 @@
 
 import logging
 
-from orvyntal.config import Settings
+from orvyntal.config.settings import Settings
 
 _LOGGER_NAME = "orvyntal"
 _HANDLER_MARKER = "_orvyntal_managed_handler"
