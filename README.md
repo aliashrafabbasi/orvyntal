@@ -68,7 +68,7 @@ Module boundaries are designed for extension without over-engineering the first 
 
 ## 4. Core capabilities
 
-All items below are **planned**.
+Capabilities below are at different implementation stages; statuses are summarized in the technology table and implementation roadmap.
 
 **A. Data intelligence.** CSV ingestion first, other formats added deliberately; schema inference; missing-value, duplicate, and quality analysis; cleaning; EDA; descriptive statistics; correlation analysis (with correlation-versus-causation caveats); outlier exploration; visualization and reports; feature preparation.
 
@@ -123,7 +123,7 @@ The full target stack is not yet implemented. The table distinguishes the existi
 | asyncio | Asynchronous I/O | API, agents | Subsystem | Planned | Where I/O concurrency helps. |
 | FastAPI | REST API | API | Core | Implemented | Application factory, versioned health routes, and OpenAPI docs. |
 | Uvicorn | ASGI server | API | Core | Implemented | Runs the root `main.py` ASGI entry point. |
-| python-multipart | Upload handling | API | Subsystem | Planned | Required if form uploads are used. |
+| python-multipart | Multipart CSV uploads | API | Core | Implemented | Required by the dataset upload endpoint. |
 | SQLAlchemy | Relational persistence abstraction | Persistence | Optional | Planned | Added only when persistence has a real use case. |
 | PostgreSQL | Relational database | Persistence | Optional | Planned | Planned production-grade store when justified. |
 | SQLite | Lightweight dev/test database | Persistence | Optional | Planned | Zero-setup testing. |
@@ -195,7 +195,7 @@ flowchart TD
         FE["Future React dashboard - Planned"]
     end
 
-    subgraph API["API layer - Planned"]
+    subgraph API["API layer - Partially implemented"]
         R["FastAPI routes"]
         V["Request validation"]
         AZ["Authentication and authorization boundary"]
@@ -206,8 +206,8 @@ flowchart TD
     end
 
     subgraph DATA["Data intelligence"]
-        ING["Dataset ingestion"]
-        AN["Analytics and EDA"]
+        ING["CSV dataset ingestion - Implemented foundation"]
+        AN["Dataset profiling and descriptive statistics - Implemented foundation"]
         ST["Statistics"]
         VIZ["Visualization and reports"]
     end
@@ -292,7 +292,7 @@ flowchart TD
 **Responsibilities.** The API layer validates and authorizes requests; application services coordinate workflows; analytics and ML handle tabular data; the LLM layer isolates providers; the RAG subsystem owns documents, embeddings, vectors, and citations; the agent runtime proposes actions while the policy engine authorizes them.
 **Validation and policy.** Request validation and authorization occur at the API boundary; structured-output and citation validation follow LLM calls; the policy engine gates every tool call.
 **Failures.** Failures return typed errors to the caller; no partial state is treated as success.
-**Status.** Everything shown is `Planned`. Databases and the dashboard are added only when a real use case exists.
+**Status.** The architecture is the intended target. The API foundation, CSV dataset ingestion, dataset profiling, and descriptive statistics have partial implementations; remaining components are planned. Databases and the dashboard are added only when a real use case exists.
 
 ### Diagram B: Dataset intelligence pipeline
 
@@ -327,7 +327,7 @@ flowchart TD
 **Responsibilities.** Ingestion validates and infers schema; analytics detects quality issues; cleaning is applied only with explicit rules or user confirmation where decisions alter data meaning.
 **Validation.** File checks first, then schema and quality checks, then sufficiency and support checks.
 **Failures.** Each branch ends in an explicit, explained outcome rather than a silent default. Cleaning decisions are recorded in the report.
-**Status.** `Planned`.
+**Status.** Partially implemented: CSV upload, input validation, schema inference, profiling, and descriptive statistics are available. Cleaning decisions, full EDA, feature preparation, ML experiments, and deterministic report generation remain planned.
 
 ### Diagram C: Document ingestion and FAISS indexing
 
@@ -529,15 +529,15 @@ sequenceDiagram
 **Responsibilities.** Validation precedes any processing; the policy engine decides permissions independently of the LLM; secrets are never placed in model context or logs; model output is validated before reaching the client.
 **Untrusted:** user inputs, retrieved document text, dataset cells, model output. **External boundary:** LLM providers.
 **Failures.** Validation, policy, or output-validation failures return errors and are audited.
-**Status.** `Planned`.
+**Status.** Planned: document extraction, normalization, chunking, embeddings, and FAISS indexing are not yet implemented.
 
 ## 8. Feature-status matrix
 
 | Component | Planned capability | Status | Verification |
 |---|---|---|---|
-| Foundation | Minimal Python packaging and automated tests | Implemented | Local verification: 20 pytest tests, Ruff lint, and Ruff formatting pass; clean-checkout verification pending |
-| Analytics | Data profiling and EDA | Planned | Analytics fixtures |
-| Statistics | Descriptive and inferential analysis | Planned | Statistical tests |
+| Foundation | Minimal Python packaging and automated tests | Implemented | Local verification: 100 pytest tests, Ruff lint, and Ruff formatting pass; clean-checkout verification pending |
+| Analytics | CSV dataset profiling and initial quality analysis | Partially implemented | Dataset profiling tests; broader EDA remains planned |
+| Statistics | Descriptive statistics | Partially implemented | Descriptive-statistics and numeric-policy tests; inferential analysis remains planned |
 | ML | Training and evaluation | Planned | ML tests |
 | Deep learning | CPU-friendly PyTorch experiment | Planned | Training tests |
 | LLM layer | Provider interface, structured output | Planned | Mock-provider tests |
@@ -545,7 +545,7 @@ sequenceDiagram
 | Vector search | FAISS indexing and retrieval | Planned | Retrieval tests |
 | RAG | Evidence-backed answers | Planned | Citation and evaluation tests |
 | Agents | Policy-controlled tools | Planned | Permission tests |
-| API | FastAPI application and versioned health endpoints | Partially implemented | Live/ready endpoint tests; broader API capabilities remain planned |
+| API | FastAPI health endpoints and CSV dataset upload with optional analytics | Partially implemented | API tests cover health routes, upload validation, dataset limits, preview, and optional analytics |
 | Persistence | Relational metadata store | Planned | Integration tests |
 | CI | GitHub Actions workflow for tests, lint, and formatting | Configured; remote run unverified | Workflow file exists; local checks pass; successful GitHub Actions run remains unverified |
 | Dashboard | React and TypeScript UI | Planned (future) | None |
@@ -702,7 +702,7 @@ The package and these foundation checks have previously passed locally. Re-run t
 
 ## 14. Testing
 
-Current quality baseline: pytest for automated tests and Ruff for linting and formatting. The current suite passes locally (20 tests at the latest verification) without a paid API, private dataset, GPU, or external database. The GitHub Actions workflow is configured, but a successful remote run has not yet been verified. `mypy` and `pytest-cov` are not currently configured; coverage must not be reported until measured.
+Current quality baseline: pytest for automated tests and Ruff for linting and formatting. Re-run the local suite and quality checks after changes; report the verified test count from that run. The foundation is designed to run without a paid API, private dataset, GPU, or external database. The GitHub Actions workflow is configured, but a successful remote run has not yet been verified. `mypy` and `pytest-cov` are not currently configured; coverage must not be reported until measured.
 
 ## 15. Contributing
 

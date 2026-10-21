@@ -4,6 +4,14 @@ import csv
 from dataclasses import dataclass
 from pathlib import Path
 
+MAX_FIELD_SIZE = 1024 * 1024
+csv.field_size_limit(MAX_FIELD_SIZE)
+
+
+def _pluralize_limit(count: int, singular: str, plural: str) -> str:
+    """Format a resource-limit noun with the correct grammatical number."""
+    return singular if count == 1 else plural
+
 
 class CsvIngestionError(ValueError):
     """Raised when a CSV file cannot be ingested safely."""
@@ -17,8 +25,15 @@ class CsvDataset:
     records: tuple[dict[str, str], ...]
 
 
-def read_csv(path: str | Path) -> CsvDataset:
-    """Read a UTF-8 CSV file and validate its basic structure."""
+def read_csv(
+    path: str | Path,
+    *,
+    max_rows: int = 10_000,
+    max_columns: int = 100,
+) -> CsvDataset:
+    """Read a UTF-8 CSV file and enforce structural resource limits."""
+    if max_rows < 1 or max_columns < 1:
+        raise ValueError("CSV row and column limits must be positive.")
     source = Path(path)
 
     try:
@@ -36,6 +51,12 @@ def read_csv(path: str | Path) -> CsvDataset:
             if not headers:
                 raise CsvIngestionError("CSV file is empty or has no header row.")
 
+            if len(headers) > max_columns:
+                raise CsvIngestionError(
+                    f"CSV exceeds the maximum of {max_columns} "
+                    f"{_pluralize_limit(max_columns, 'column', 'columns')}."
+                )
+
             if any(not header.strip() for header in headers):
                 raise CsvIngestionError("CSV headers must not be blank.")
 
@@ -44,6 +65,11 @@ def read_csv(path: str | Path) -> CsvDataset:
 
             records = []
             for row in reader:
+                if len(records) >= max_rows:
+                    raise CsvIngestionError(
+                        f"CSV exceeds the maximum of {max_rows} "
+                        f"{_pluralize_limit(max_rows, 'data row', 'data rows')}."
+                    )
                 if None in row:
                     raise CsvIngestionError(
                         "CSV row contains more fields than the header."

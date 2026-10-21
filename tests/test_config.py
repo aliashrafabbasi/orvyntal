@@ -12,6 +12,8 @@ def test_default_settings(monkeypatch: pytest.MonkeyPatch) -> None:
         "ORVYNTAL_ENVIRONMENT",
         "ORVYNTAL_LOG_LEVEL",
         "ORVYNTAL_DEBUG",
+        "ORVYNTAL_MAX_DATASET_ROWS",
+        "ORVYNTAL_MAX_DATASET_COLUMNS",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -21,6 +23,8 @@ def test_default_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.environment == "development"
     assert settings.log_level == "INFO"
     assert settings.debug is False
+    assert settings.max_dataset_rows == 10_000
+    assert settings.max_dataset_columns == 100
 
 
 def test_environment_variables_override_defaults(
@@ -30,6 +34,8 @@ def test_environment_variables_override_defaults(
     monkeypatch.setenv("ORVYNTAL_ENVIRONMENT", "test")
     monkeypatch.setenv("ORVYNTAL_LOG_LEVEL", "DEBUG")
     monkeypatch.setenv("ORVYNTAL_DEBUG", "true")
+    monkeypatch.setenv("ORVYNTAL_MAX_DATASET_ROWS", "250")
+    monkeypatch.setenv("ORVYNTAL_MAX_DATASET_COLUMNS", "12")
 
     settings = Settings()
 
@@ -37,6 +43,8 @@ def test_environment_variables_override_defaults(
     assert settings.environment == "test"
     assert settings.log_level == "DEBUG"
     assert settings.debug is True
+    assert settings.max_dataset_rows == 250
+    assert settings.max_dataset_columns == 12
 
 
 def test_invalid_environment_is_rejected() -> None:

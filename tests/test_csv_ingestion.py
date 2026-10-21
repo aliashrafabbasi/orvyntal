@@ -113,3 +113,58 @@ def test_rejects_whitespace_only_header(tmp_path) -> None:
 
     with pytest.raises(CsvIngestionError, match="must not be blank"):
         read_csv(path)
+
+
+def test_accepts_exact_row_limit(tmp_path) -> None:
+    path = tmp_path / "rows.csv"
+    path.write_text("value\n" + "x\n" * 3, encoding="utf-8")
+
+    dataset = read_csv(path, max_rows=3)
+
+    assert len(dataset.records) == 3
+
+
+def test_rejects_rows_over_limit(tmp_path) -> None:
+    path = tmp_path / "too_many_rows.csv"
+    path.write_text("value\n" + "x\n" * 4, encoding="utf-8")
+
+    with pytest.raises(CsvIngestionError, match="maximum of 3 data rows"):
+        read_csv(path, max_rows=3)
+
+
+def test_accepts_exact_column_limit(tmp_path) -> None:
+    path = tmp_path / "columns.csv"
+    path.write_text("a,b,c\n1,2,3\n", encoding="utf-8")
+
+    dataset = read_csv(path, max_columns=3)
+
+    assert len(dataset.headers) == 3
+
+
+def test_rejects_columns_over_limit(tmp_path) -> None:
+    path = tmp_path / "too_many_columns.csv"
+    path.write_text("a,b,c,d\n1,2,3,4\n", encoding="utf-8")
+
+    with pytest.raises(CsvIngestionError, match="maximum of 3 columns"):
+        read_csv(path, max_columns=3)
+
+
+def test_accepts_csv_field_at_exact_size_limit(tmp_path) -> None:
+    from orvyntal.data_intelligence.ingestion.csv_reader import MAX_FIELD_SIZE
+
+    path = tmp_path / "field_at_limit.csv"
+    path.write_text("value\n" + ("x" * MAX_FIELD_SIZE) + "\n", encoding="utf-8")
+
+    dataset = read_csv(path)
+
+    assert len(dataset.records[0]["value"]) == MAX_FIELD_SIZE
+
+
+def test_rejects_csv_field_over_size_limit(tmp_path) -> None:
+    from orvyntal.data_intelligence.ingestion.csv_reader import MAX_FIELD_SIZE
+
+    path = tmp_path / "field_over_limit.csv"
+    path.write_text("value\n" + ("x" * (MAX_FIELD_SIZE + 1)) + "\n", encoding="utf-8")
+
+    with pytest.raises(CsvIngestionError):
+        read_csv(path)
