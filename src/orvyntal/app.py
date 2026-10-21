@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from orvyntal import __version__
+from orvyntal.api.routes.datasets import router as datasets_router
 from orvyntal.api.routes.health import router as health_router
 from orvyntal.config.settings import Settings
 from orvyntal.core.runtime import bootstrap_runtime
@@ -32,6 +33,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         debug=app_settings.debug,
         lifespan=lifespan,
     )
+    application.state.settings = app_settings
     application.include_router(health_router, prefix="/api/v1")
+    application.include_router(datasets_router, prefix="/api/v1")
 
     return application

@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     environment: Environment = "development"
     log_level: LogLevel = "INFO"
     debug: bool = False
+    max_upload_size_bytes: int = Field(default=10 * 1024 * 1024, gt=0)
 
     @model_validator(mode="after")
     def validate_production_debug(self) -> "Settings":
