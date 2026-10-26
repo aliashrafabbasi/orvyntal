@@ -175,6 +175,7 @@ def test_dataset_upload_header_only_csv_includes_empty_analytics(client) -> None
     assert body["analytics"] == {
         "column_count": 2,
         "duplicate_row_count": 0,
+        "correlations": [],
         "columns": [
             {
                 "name": "amount",
@@ -192,6 +193,57 @@ def test_dataset_upload_header_only_csv_includes_empty_analytics(client) -> None
             },
         ],
     }
+
+
+def test_dataset_upload_includes_pairwise_correlations(client) -> None:
+    csv_content = "x,y,constant\n1,3,7\n2,2,7\n3,1,7\n"
+    response = client.post(
+        "/api/v1/datasets?include_analytics=true",
+        files={"file": ("correlation.csv", csv_content, "text/csv")},
+    )
+
+    assert response.status_code == 200
+    correlations = response.json()["analytics"]["correlations"]
+    assert correlations == [
+        {
+            "column_x": "x",
+            "column_y": "y",
+            "observation_count": 3,
+            "correlation": "-1",
+        },
+        {
+            "column_x": "x",
+            "column_y": "constant",
+            "observation_count": 3,
+            "correlation": None,
+        },
+        {
+            "column_x": "y",
+            "column_y": "constant",
+            "observation_count": 3,
+            "correlation": None,
+        },
+    ]
+
+
+def test_dataset_upload_correlations_skip_missing_and_invalid_pairs(
+    client,
+) -> None:
+    csv_content = "x,y\n1,2\n2,4\ninvalid,6\n4,\n"
+    response = client.post(
+        "/api/v1/datasets?include_analytics=true",
+        files={"file": ("partial.csv", csv_content, "text/csv")},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["analytics"]["correlations"] == [
+        {
+            "column_x": "x",
+            "column_y": "y",
+            "observation_count": 2,
+            "correlation": "1",
+        }
+    ]
 
 
 def test_dataset_upload_mixed_values_reports_valid_and_invalid_numbers(

@@ -8,6 +8,9 @@ from typing import Annotated
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 
+from orvyntal.data_intelligence.analytics.correlation import (
+    correlate_numeric_columns,
+)
 from orvyntal.data_intelligence.analytics.descriptive import (
     describe_numeric_values,
 )
@@ -58,12 +61,22 @@ class ColumnAnalyticsResponse(BaseModel):
     numeric_statistics: DescriptiveStatisticsResponse | None
 
 
+class CorrelationPairResponse(BaseModel):
+    """Pearson correlation for a pair of numeric columns."""
+
+    column_x: str
+    column_y: str
+    observation_count: int
+    correlation: str | None
+
+
 class DatasetAnalyticsResponse(BaseModel):
-    """Dataset-level analytics and ordered column analytics."""
+    """Dataset-level descriptive analytics and correlations."""
 
     column_count: int
     duplicate_row_count: int
     columns: list[ColumnAnalyticsResponse]
+    correlations: list[CorrelationPairResponse]
 
 
 class DatasetIngestionResponse(BaseModel):
@@ -184,10 +197,25 @@ async def upload_dataset(
                         )
                     )
 
+                correlation_analysis = correlate_numeric_columns(dataset)
+                correlations = [
+                    CorrelationPairResponse(
+                        column_x=pair.column_x,
+                        column_y=pair.column_y,
+                        observation_count=pair.observation_count,
+                        correlation=(
+                            _format_analytics_decimal(pair.correlation)
+                            if pair.correlation is not None
+                            else None
+                        ),
+                    )
+                    for pair in correlation_analysis.pairs
+                ]
                 response.analytics = DatasetAnalyticsResponse(
                     column_count=profile.column_count,
                     duplicate_row_count=profile.duplicate_row_count,
                     columns=column_analytics,
+                    correlations=correlations,
                 )
 
             return response
