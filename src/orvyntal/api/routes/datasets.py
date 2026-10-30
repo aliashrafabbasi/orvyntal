@@ -1,6 +1,7 @@
 """Dataset ingestion API routes."""
 
 from decimal import Decimal
+from fractions import Fraction
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Annotated
@@ -13,6 +14,9 @@ from orvyntal.data_intelligence.analytics.correlation import (
 )
 from orvyntal.data_intelligence.analytics.descriptive import (
     describe_numeric_values,
+)
+from orvyntal.data_intelligence.analytics.outliers import (
+    analyze_numeric_outliers,
 )
 from orvyntal.data_intelligence.analytics.profiling import profile_dataset
 from orvyntal.data_intelligence.ingestion.csv_reader import (
@@ -32,6 +36,33 @@ def _format_analytics_decimal(value: Decimal) -> str:
     if len(rendered) <= 64:
         return rendered
     return format(value, ".6E")
+
+
+def _format_analytics_fraction(value: Fraction | None) -> str | None:
+    """Format an exact terminating fraction as a bounded decimal string."""
+    if value is None:
+        return None
+
+    denominator = value.denominator
+    twos = 0
+    fives = 0
+
+    while denominator % 2 == 0:
+        denominator //= 2
+        twos += 1
+
+    while denominator % 5 == 0:
+        denominator //= 5
+        fives += 1
+
+    if denominator != 1:
+        raise ValueError("Expected a terminating decimal fraction.")
+
+    scale = max(twos, fives)
+    scaled = value.numerator * (10**scale // value.denominator)
+    digits = tuple(int(digit) for digit in str(abs(scaled)))
+    decimal = Decimal((1 if scaled < 0 else 0, digits, -scale))
+    return _format_analytics_decimal(decimal)
 
 
 class DescriptiveStatisticsResponse(BaseModel):
@@ -70,6 +101,28 @@ class CorrelationPairResponse(BaseModel):
     correlation: str | None
 
 
+class OutlierObservationResponse(BaseModel):
+    """A detected outlier and its zero-based data-row index."""
+
+    row_index: int
+    value: str
+
+
+class ColumnOutlierResponse(BaseModel):
+    """IQR statistics and outlier observations for one numeric column."""
+
+    column_name: str
+    observation_count: int
+    missing_count: int
+    invalid_count: int
+    q1: str | None
+    q3: str | None
+    iqr: str | None
+    lower_bound: str | None
+    upper_bound: str | None
+    outliers: list[OutlierObservationResponse]
+
+
 class DatasetAnalyticsResponse(BaseModel):
     """Dataset-level descriptive analytics and correlations."""
 
@@ -77,6 +130,7 @@ class DatasetAnalyticsResponse(BaseModel):
     duplicate_row_count: int
     columns: list[ColumnAnalyticsResponse]
     correlations: list[CorrelationPairResponse]
+    outliers: list[ColumnOutlierResponse]
 
 
 class DatasetIngestionResponse(BaseModel):
@@ -211,11 +265,36 @@ async def upload_dataset(
                     )
                     for pair in correlation_analysis.pairs
                 ]
+                outlier_analysis = analyze_numeric_outliers(dataset)
+                outlier_columns = [
+                    ColumnOutlierResponse(
+                        column_name=column.column_name,
+                        observation_count=column.observation_count,
+                        missing_count=column.missing_count,
+                        invalid_count=column.invalid_count,
+                        q1=_format_analytics_fraction(column.q1),
+                        q3=_format_analytics_fraction(column.q3),
+                        iqr=_format_analytics_fraction(column.iqr),
+                        lower_bound=_format_analytics_fraction(column.lower_bound),
+                        upper_bound=_format_analytics_fraction(column.upper_bound),
+                        outliers=[
+                            OutlierObservationResponse(
+                                row_index=item.row_index,
+                                value=_format_analytics_decimal(item.value),
+                            )
+                            for item in column.outliers
+                        ],
+                    )
+                    for column in outlier_analysis.columns
+                    if column.observation_count > 0
+                ]
+
                 response.analytics = DatasetAnalyticsResponse(
                     column_count=profile.column_count,
                     duplicate_row_count=profile.duplicate_row_count,
                     columns=column_analytics,
                     correlations=correlations,
+                    outliers=outlier_columns,
                 )
 
             return response

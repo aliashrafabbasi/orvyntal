@@ -1,11 +1,13 @@
 """Tests for the ORVYNTAL FastAPI application."""
 
 import logging
+from fractions import Fraction
 
 import pytest
 from fastapi.testclient import TestClient
 
 from orvyntal import __version__
+from orvyntal.api.routes.datasets import _format_analytics_fraction
 from orvyntal.app import create_app
 from orvyntal.config.settings import Settings
 
@@ -151,6 +153,51 @@ def test_dataset_upload_analytics_counts_missing_and_invalid_values(client) -> N
     assert score["numeric_statistics"]["sample_variance"] is None
 
 
+def test_dataset_upload_includes_numeric_outlier_analysis(client) -> None:
+    csv_content = "amount\n1\n2\n3\n4\n5\n100\n \ninvalid\n"
+    response = client.post(
+        "/api/v1/datasets?include_analytics=true",
+        files={"file": ("outliers.csv", csv_content, "text/csv")},
+    )
+
+    assert response.status_code == 200
+    outliers = response.json()["analytics"]["outliers"]
+
+    assert outliers == [
+        {
+            "column_name": "amount",
+            "observation_count": 6,
+            "missing_count": 1,
+            "invalid_count": 1,
+            "q1": "2",
+            "q3": "5",
+            "iqr": "3",
+            "lower_bound": "-2.5",
+            "upper_bound": "9.5",
+            "outliers": [{"row_index": 5, "value": "100"}],
+        }
+    ]
+
+
+def test_dataset_upload_bounds_extreme_outlier_statistics(client) -> None:
+    response = client.post(
+        "/api/v1/datasets?include_analytics=true",
+        files={
+            "file": (
+                "extreme-outliers.csv",
+                "amount\n-1e1000\n1e1000\n",
+                "text/csv",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    result = response.json()["analytics"]["outliers"][0]
+    assert len(result["lower_bound"]) <= 64
+    assert len(result["upper_bound"]) <= 64
+    assert result["outliers"] == []
+
+
 def test_dataset_upload_omits_analytics_by_default(client) -> None:
     response = client.post(
         "/api/v1/datasets",
@@ -176,6 +223,7 @@ def test_dataset_upload_header_only_csv_includes_empty_analytics(client) -> None
         "column_count": 2,
         "duplicate_row_count": 0,
         "correlations": [],
+        "outliers": [],
         "columns": [
             {
                 "name": "amount",
@@ -428,3 +476,30 @@ def test_dataset_upload_rejects_columns_over_configured_limit(
 
     assert response.status_code == 422
     assert "maximum of 1 column" in response.json()["detail"]
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (None, None),
+        (Fraction(0), "0"),
+        (Fraction(1, 2), "0.5"),
+        (Fraction(-7, 2), "-3.5"),
+        (Fraction(1, 8), "0.125"),
+        (Fraction(1, 5), "0.2"),
+    ],
+)
+def test_format_analytics_fraction_terminating_values(value, expected) -> None:
+    assert _format_analytics_fraction(value) == expected
+
+
+def test_format_analytics_fraction_rejects_non_terminating_value() -> None:
+    with pytest.raises(ValueError, match="Expected a terminating decimal fraction"):
+        _format_analytics_fraction(Fraction(1, 3))
+
+
+def test_format_analytics_fraction_bounds_extreme_output() -> None:
+    result = _format_analytics_fraction(Fraction(10**1000))
+
+    assert result is not None
+    assert len(result) <= 64
