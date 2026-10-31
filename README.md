@@ -535,7 +535,7 @@ sequenceDiagram
 
 | Component | Planned capability | Status | Verification |
 |---|---|---|---|
-| Foundation | Minimal Python packaging and automated tests | Implemented | Local verification: 100 pytest tests, Ruff lint, and Ruff formatting pass; clean-checkout verification pending |
+| Foundation | Minimal Python packaging and automated tests | Implemented | Local and clean-checkout verification: 134 pytest tests, Ruff lint, Ruff formatting, and wheel build pass; fresh wheel installation and imports verified |
 | Analytics | CSV dataset profiling and initial quality analysis | Partially implemented | Dataset profiling tests; broader EDA remains planned |
 | Statistics | Descriptive statistics | Partially implemented | Descriptive-statistics and numeric-policy tests; inferential analysis remains planned |
 | ML | Training and evaluation | Planned | ML tests |
@@ -789,7 +789,7 @@ GitHub contact route.
 
 ## 16. Known limitations
 
-- No functional implementation is verified yet; this document describes intent.
+- The API foundation, CSV dataset ingestion and validation, and initial profiling/descriptive statistics have implemented code and automated tests. Broader EDA, ML/DL, LLM, RAG, agents, persistence, and dashboard capabilities remain planned. Milestone 0's clean-checkout integration gate has passed locally. Existing remote CI runs have passed on earlier commits; the current uncommitted changes have not yet been tested by remote CI.
 - RAG cannot guarantee perfect retrieval or eliminate hallucinations.
 - FAISS alone provides no metadata filtering, authorization, or transactions.
 - No authentication or multi-user isolation exists.
