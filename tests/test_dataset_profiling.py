@@ -210,3 +210,119 @@ def test_missing_percentage_uses_six_decimal_precision() -> None:
     column = profile_dataset(dataset).columns[0]
 
     assert column.missing_percentage == Decimal("33.333333")
+
+
+def test_text_column_reports_category_frequencies_and_percentages() -> None:
+    dataset = CsvDataset(
+        headers=("name",),
+        records=(
+            {"name": "Ali"},
+            {"name": "Sara"},
+            {"name": "Ali"},
+            {"name": ""},
+            {"name": "Sara"},
+            {"name": "Ali"},
+        ),
+    )
+
+    column = profile_dataset(dataset).columns[0]
+
+    assert column.inferred_type == "text"
+    assert column.missing_count == 1
+    assert column.categorical_summary is not None
+    assert column.categorical_summary.unique_count == 2
+    assert [
+        (item.value, item.count, item.percentage)
+        for item in column.categorical_summary.top_categories
+    ] == [
+        ("Ali", 3, Decimal("60.000000")),
+        ("Sara", 2, Decimal("40.000000")),
+    ]
+
+
+def test_category_frequency_ties_use_deterministic_value_order() -> None:
+    dataset = CsvDataset(
+        headers=("name",),
+        records=(
+            {"name": "Zara"},
+            {"name": "Ali"},
+            {"name": "Sara"},
+            {"name": "Ali"},
+            {"name": "Zara"},
+            {"name": "Sara"},
+        ),
+    )
+
+    summary = profile_dataset(dataset).columns[0].categorical_summary
+
+    assert summary is not None
+    assert [item.value for item in summary.top_categories] == [
+        "Ali",
+        "Sara",
+        "Zara",
+    ]
+    assert all(
+        item.percentage == Decimal("33.333333") for item in summary.top_categories
+    )
+
+
+def test_boolean_column_reports_category_frequencies() -> None:
+    dataset = CsvDataset(
+        headers=("active",),
+        records=(
+            {"active": "yes"},
+            {"active": "no"},
+            {"active": "yes"},
+            {"active": ""},
+        ),
+    )
+
+    column = profile_dataset(dataset).columns[0]
+
+    assert column.inferred_type == "boolean"
+    assert column.categorical_summary is not None
+    assert [
+        (item.value, item.count) for item in column.categorical_summary.top_categories
+    ] == [("yes", 2), ("no", 1)]
+
+
+def test_numeric_column_does_not_report_category_frequencies() -> None:
+    dataset = CsvDataset(
+        headers=("score",),
+        records=({"score": "10"}, {"score": "20"}, {"score": "10"}),
+    )
+
+    column = profile_dataset(dataset).columns[0]
+
+    assert column.inferred_type == "integer"
+    assert column.numeric_summary is not None
+    assert column.categorical_summary is None
+
+
+def test_high_cardinality_column_returns_only_top_twenty_categories() -> None:
+    dataset = CsvDataset(
+        headers=("label",),
+        records=tuple({"label": f"category-{i:02d}"} for i in range(25)),
+    )
+
+    summary = profile_dataset(dataset).columns[0].categorical_summary
+
+    assert summary is not None
+    assert summary.unique_count == 25
+    assert len(summary.top_categories) == 20
+    assert [item.value for item in summary.top_categories] == [
+        f"category-{i:02d}" for i in range(20)
+    ]
+
+
+def test_all_missing_text_column_has_empty_category_summary() -> None:
+    dataset = CsvDataset(
+        headers=("label",),
+        records=({"label": ""}, {"label": "  "}),
+    )
+
+    column = profile_dataset(dataset).columns[0]
+
+    assert column.categorical_summary is not None
+    assert column.categorical_summary.unique_count == 0
+    assert column.categorical_summary.top_categories == ()

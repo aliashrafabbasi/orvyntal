@@ -24,14 +24,32 @@ class NumericSummary:
 
 
 @dataclass(frozen=True, slots=True)
+class CategoryFrequency:
+    """Frequency and percentage for one categorical value."""
+
+    value: str
+    count: int
+    percentage: Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class CategoricalSummary:
+    """Bounded category frequencies for a categorical column."""
+
+    unique_count: int
+    top_categories: tuple[CategoryFrequency, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class ColumnProfile:
-    """Missing-value, type-inference, and numeric information for one column."""
+    """Missing-value, type-inference, and summary information for one column."""
 
     name: str
     inferred_type: str
     missing_count: int
     missing_percentage: Decimal
     numeric_summary: NumericSummary | None
+    categorical_summary: CategoricalSummary | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,6 +135,39 @@ def _numeric_summary(numbers: list[Decimal | None]) -> NumericSummary | None:
     )
 
 
+def _categorical_summary(
+    values: list[str],
+    inferred_type: str,
+) -> CategoricalSummary | None:
+    """Summarize text and boolean values with deterministic top-20 ordering."""
+    if inferred_type not in {"text", "boolean"}:
+        return None
+
+    frequencies: dict[str, int] = {}
+    for value in values:
+        frequencies[value] = frequencies.get(value, 0) + 1
+
+    total = len(values)
+    ranked = sorted(frequencies.items(), key=lambda item: (-item[1], item[0]))
+    top_categories = (
+        tuple(
+            CategoryFrequency(
+                value=value,
+                count=count,
+                percentage=_round_fraction(Fraction(count * 100, total)),
+            )
+            for value, count in ranked[:20]
+        )
+        if total
+        else ()
+    )
+
+    return CategoricalSummary(
+        unique_count=len(frequencies),
+        top_categories=top_categories,
+    )
+
+
 def profile_dataset(dataset: CsvDataset) -> DatasetProfile:
     """Profile a CSV dataset without changing its records.
 
@@ -132,11 +183,12 @@ def profile_dataset(dataset: CsvDataset) -> DatasetProfile:
         missing_count = sum(not value.strip() for value in values)
         non_missing = [value for value in values if value.strip()]
         parsed = [_parse_decimal(value) for value in non_missing]
+        inferred_type = _infer_type(non_missing, parsed)
 
         column_profiles.append(
             ColumnProfile(
                 name=header,
-                inferred_type=_infer_type(non_missing, parsed),
+                inferred_type=inferred_type,
                 missing_count=missing_count,
                 missing_percentage=(
                     _round_fraction(Fraction(missing_count * 100, row_count))
@@ -144,6 +196,10 @@ def profile_dataset(dataset: CsvDataset) -> DatasetProfile:
                     else Decimal("0.000000")
                 ),
                 numeric_summary=_numeric_summary(parsed),
+                categorical_summary=_categorical_summary(
+                    non_missing,
+                    inferred_type,
+                ),
             )
         )
 

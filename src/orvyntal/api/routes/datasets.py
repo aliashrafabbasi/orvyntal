@@ -82,14 +82,30 @@ class DescriptiveStatisticsResponse(BaseModel):
     sample_standard_deviation: str | None
 
 
+class CategoryFrequencyResponse(BaseModel):
+    """Frequency and percentage for one categorical value."""
+
+    value: str
+    count: int
+    percentage: str
+
+
+class CategoricalStatisticsResponse(BaseModel):
+    """Unique category count and bounded top-category frequencies."""
+
+    unique_count: int
+    top_categories: list[CategoryFrequencyResponse]
+
+
 class ColumnAnalyticsResponse(BaseModel):
-    """Profiling and optional descriptive statistics for one column."""
+    """Profiling and optional statistics for one column."""
 
     name: str
     inferred_type: str
     missing_count: int
     missing_percentage: str
     numeric_statistics: DescriptiveStatisticsResponse | None
+    categorical_statistics: CategoricalStatisticsResponse | None = None
 
 
 class CorrelationPairResponse(BaseModel):
@@ -248,6 +264,23 @@ async def upload_dataset(
                             missing_count=column.missing_count,
                             missing_percentage=str(column.missing_percentage),
                             numeric_statistics=statistics,
+                            categorical_statistics=(
+                                CategoricalStatisticsResponse(
+                                    unique_count=column.categorical_summary.unique_count,
+                                    top_categories=[
+                                        CategoryFrequencyResponse(
+                                            value=item.value,
+                                            count=item.count,
+                                            percentage=str(item.percentage),
+                                        )
+                                        for item in (
+                                            column.categorical_summary.top_categories
+                                        )
+                                    ],
+                                )
+                                if column.categorical_summary is not None
+                                else None
+                            ),
                         )
                     )
 

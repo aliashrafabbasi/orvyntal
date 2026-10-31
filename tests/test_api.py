@@ -231,6 +231,10 @@ def test_dataset_upload_header_only_csv_includes_empty_analytics(client) -> None
                 "missing_count": 0,
                 "missing_percentage": "0.000000",
                 "numeric_statistics": None,
+                "categorical_statistics": {
+                    "unique_count": 0,
+                    "top_categories": [],
+                },
             },
             {
                 "name": "name",
@@ -238,6 +242,10 @@ def test_dataset_upload_header_only_csv_includes_empty_analytics(client) -> None
                 "missing_count": 0,
                 "missing_percentage": "0.000000",
                 "numeric_statistics": None,
+                "categorical_statistics": {
+                    "unique_count": 0,
+                    "top_categories": [],
+                },
             },
         ],
     }
@@ -503,3 +511,36 @@ def test_format_analytics_fraction_bounds_extreme_output() -> None:
 
     assert result is not None
     assert len(result) <= 64
+
+
+def test_dataset_upload_includes_categorical_analytics(client) -> None:
+    csv_content = "department\nAI\nWeb\nAI\nData\nWeb\nAI\n"
+    response = client.post(
+        "/api/v1/datasets?include_analytics=true",
+        files={"file": ("departments.csv", csv_content, "text/csv")},
+    )
+
+    assert response.status_code == 200
+    analytics = response.json()["analytics"]
+    department = analytics["columns"][0]
+
+    assert department["inferred_type"] == "text"
+    assert department["categorical_statistics"] == {
+        "unique_count": 3,
+        "top_categories": [
+            {"value": "AI", "count": 3, "percentage": "50.000000"},
+            {"value": "Web", "count": 2, "percentage": "33.333333"},
+            {"value": "Data", "count": 1, "percentage": "16.666667"},
+        ],
+    }
+
+
+def test_numeric_column_has_no_categorical_analytics(client) -> None:
+    response = client.post(
+        "/api/v1/datasets?include_analytics=true",
+        files={"file": ("scores.csv", "score\n10\n20\n", "text/csv")},
+    )
+
+    assert response.status_code == 200
+    column = response.json()["analytics"]["columns"][0]
+    assert column["categorical_statistics"] is None
