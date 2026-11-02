@@ -544,3 +544,41 @@ def test_numeric_column_has_no_categorical_analytics(client) -> None:
     assert response.status_code == 200
     column = response.json()["analytics"]["columns"][0]
     assert column["categorical_statistics"] is None
+
+
+def test_dataset_upload_includes_boolean_categorical_analytics(client) -> None:
+    csv_content = "active\nyes\nno\nyes\n"
+    response = client.post(
+        "/api/v1/datasets?include_analytics=true",
+        files={"file": ("active.csv", csv_content, "text/csv")},
+    )
+
+    assert response.status_code == 200
+    column = response.json()["analytics"]["columns"][0]
+
+    assert column["inferred_type"] == "boolean"
+    assert column["categorical_statistics"] == {
+        "unique_count": 2,
+        "top_categories": [
+            {"value": "yes", "count": 2, "percentage": "66.666667"},
+            {"value": "no", "count": 1, "percentage": "33.333333"},
+        ],
+    }
+
+
+def test_dataset_upload_limits_categories_to_top_twenty(client) -> None:
+    categories = [f"category-{index:02d}" for index in range(25)]
+    csv_content = "label\n" + "\n".join(categories) + "\n"
+
+    response = client.post(
+        "/api/v1/datasets?include_analytics=true",
+        files={"file": ("categories.csv", csv_content, "text/csv")},
+    )
+
+    assert response.status_code == 200
+    column = response.json()["analytics"]["columns"][0]
+    statistics = column["categorical_statistics"]
+
+    assert statistics["unique_count"] == 25
+    assert len(statistics["top_categories"]) == 20
+    assert [item["value"] for item in statistics["top_categories"]] == categories[:20]
