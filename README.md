@@ -690,6 +690,29 @@ uvicorn main:app --reload
 
 API docs: <http://127.0.0.1:8000/docs>
 
+### Dataset Upload API
+
+Upload a CSV dataset using `POST /api/v1/datasets`:
+
+```bash
+curl -X POST "http://127.0.0.1:8000/api/v1/datasets" -F "file=@dataset.csv"
+```
+
+Optional query parameters:
+
+| Parameter | Default | Description |
+|---|---|---|
+| `include_analytics` | `false` | Include dataset profiling, descriptive statistics, correlations, and outlier analysis. |
+| `include_correlations` | `true` | Calculate pairwise numeric correlations when analytics are enabled. Set to `false` to skip this potentially expensive calculation. |
+
+Example: request analytics without correlation calculations:
+
+```bash
+curl -X POST "http://127.0.0.1:8000/api/v1/datasets?include_analytics=true&include_correlations=false" -F "file=@dataset.csv"
+```
+
+`include_correlations` has no effect when `include_analytics=false`.
+
 Run the local quality checks:
 
 ```bash

@@ -422,6 +422,11 @@ def test_openapi_documents_dataset_upload_responses(client) -> None:
     assert response.status_code == 200
     operation = response.json()["paths"]["/api/v1/datasets"]["post"]
     assert {"200", "413", "415", "422"} <= set(operation["responses"])
+
+    parameters = {parameter["name"]: parameter for parameter in operation["parameters"]}
+    assert parameters["include_correlations"]["in"] == "query"
+    assert parameters["include_correlations"]["schema"]["type"] == "boolean"
+    assert parameters["include_correlations"]["schema"]["default"] is True
     assert (
         operation["responses"]["413"]["description"]
         == "Uploaded file exceeds the configured size limit."
@@ -582,3 +587,46 @@ def test_dataset_upload_limits_categories_to_top_twenty(client) -> None:
     assert statistics["unique_count"] == 25
     assert len(statistics["top_categories"]) == 20
     assert [item["value"] for item in statistics["top_categories"]] == categories[:20]
+
+
+def test_dataset_upload_can_skip_correlations(client) -> None:
+    csv_content = "x,y\n1,2\n2,4\n3,6\n"
+    response = client.post(
+        "/api/v1/datasets?include_analytics=true&include_correlations=false",
+        files={"file": ("scores.csv", csv_content, "text/csv")},
+    )
+
+    assert response.status_code == 200
+    analytics = response.json()["analytics"]
+    assert analytics["correlations"] == []
+    assert analytics["columns"]
+    assert analytics["outliers"]
+
+
+def test_dataset_upload_skips_correlation_calculation(client, monkeypatch) -> None:
+    from orvyntal.api.routes import datasets
+
+    def fail_if_called(dataset):
+        raise AssertionError("Correlation calculation should have been skipped.")
+
+    monkeypatch.setattr(datasets, "correlate_numeric_columns", fail_if_called)
+
+    response = client.post(
+        "/api/v1/datasets?include_analytics=true&include_correlations=false",
+        files={"file": ("scores.csv", "x,y\n1,2\n2,4\n", "text/csv")},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["analytics"]["correlations"] == []
+
+
+def test_dataset_upload_omits_analytics_when_disabled_with_correlations_flag(
+    client,
+) -> None:
+    response = client.post(
+        "/api/v1/datasets?include_analytics=false&include_correlations=false",
+        files={"file": ("scores.csv", "x,y\n1,2\n2,4\n", "text/csv")},
+    )
+
+    assert response.status_code == 200
+    assert "analytics" not in response.json()

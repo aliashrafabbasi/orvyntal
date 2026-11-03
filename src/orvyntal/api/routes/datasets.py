@@ -173,6 +173,7 @@ async def upload_dataset(
     request: Request,
     file: Annotated[UploadFile, File(description="CSV dataset to validate")],
     include_analytics: bool = False,
+    include_correlations: bool = True,
 ) -> DatasetIngestionResponse:
     """Validate an uploaded CSV and optionally return dataset analytics."""
     if not (file.filename or "").lower().endswith(".csv"):
@@ -284,20 +285,22 @@ async def upload_dataset(
                         )
                     )
 
-                correlation_analysis = correlate_numeric_columns(dataset)
-                correlations = [
-                    CorrelationPairResponse(
-                        column_x=pair.column_x,
-                        column_y=pair.column_y,
-                        observation_count=pair.observation_count,
-                        correlation=(
-                            _format_analytics_decimal(pair.correlation)
-                            if pair.correlation is not None
-                            else None
-                        ),
-                    )
-                    for pair in correlation_analysis.pairs
-                ]
+                correlations = []
+                if include_correlations:
+                    correlation_analysis = correlate_numeric_columns(dataset)
+                    correlations = [
+                        CorrelationPairResponse(
+                            column_x=pair.column_x,
+                            column_y=pair.column_y,
+                            observation_count=pair.observation_count,
+                            correlation=(
+                                _format_analytics_decimal(pair.correlation)
+                                if pair.correlation is not None
+                                else None
+                            ),
+                        )
+                        for pair in correlation_analysis.pairs
+                    ]
                 outlier_analysis = analyze_numeric_outliers(dataset)
                 outlier_columns = [
                     ColumnOutlierResponse(
