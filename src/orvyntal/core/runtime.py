@@ -4,6 +4,7 @@ import logging
 from dataclasses import dataclass
 
 from orvyntal.config.settings import Settings
+from orvyntal.core.analytics_service import AnalyticsService
 from orvyntal.core.logging import configure_logging
 
 
@@ -13,6 +14,7 @@ class RuntimeContext:
 
     settings: Settings
     logger: logging.Logger
+    analytics_service: AnalyticsService
 
 
 def bootstrap_runtime(settings: Settings | None = None) -> RuntimeContext:
@@ -27,4 +29,13 @@ def bootstrap_runtime(settings: Settings | None = None) -> RuntimeContext:
         settings.environment,
     )
 
-    return RuntimeContext(settings=settings, logger=logger)
+    analytics_service = AnalyticsService(
+        max_concurrent_jobs=settings.max_concurrent_analytics_jobs,
+        timeout_seconds=settings.analytics_timeout_seconds,
+    )
+
+    return RuntimeContext(
+        settings=settings,
+        logger=logger,
+        analytics_service=analytics_service,
+    )

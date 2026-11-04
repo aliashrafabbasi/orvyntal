@@ -24,6 +24,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             yield
         finally:
+            await runtime.analytics_service.shutdown()
             runtime.logger.info("Runtime shutdown complete")
             del application.state.runtime
 

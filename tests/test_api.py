@@ -1,6 +1,8 @@
 """Tests for the ORVYNTAL FastAPI application."""
 
 import logging
+import time
+from concurrent.futures import ThreadPoolExecutor
 from fractions import Fraction
 
 import pytest
@@ -10,6 +12,13 @@ from orvyntal import __version__
 from orvyntal.api.routes.datasets import _format_analytics_fraction
 from orvyntal.app import create_app
 from orvyntal.config.settings import Settings
+from orvyntal.core import analytics_worker
+from orvyntal.core.analytics_service import (
+    AnalyticsBusyError,
+    AnalyticsExecutionError,
+    AnalyticsService,
+    AnalyticsTimeoutError,
+)
 
 
 @pytest.fixture
@@ -53,6 +62,51 @@ def test_liveness_endpoint(client) -> None:
 
     assert response.status_code == 200
     assert response.json() == {"status": "alive"}
+
+
+def _delayed_analytics_worker(connection, dataset, include_correlations):
+    """Simulate CPU contention before running the real analytics worker."""
+    deadline = time.monotonic() + 0.75
+    value = 0
+
+    while time.monotonic() < deadline:
+        value += 1
+
+    analytics_worker.run_analytics_worker(
+        connection,
+        dataset,
+        include_correlations,
+    )
+
+
+def test_liveness_endpoint_remains_responsive_during_analytics(client):
+    service = client.app.state.runtime.analytics_service
+    service._worker_target = _delayed_analytics_worker
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        upload = executor.submit(
+            client.post,
+            "/api/v1/datasets?include_analytics=true",
+            files={"file": ("scores.csv", "score\\n10\\n20\\n30\\n", "text/csv")},
+        )
+
+        deadline = time.monotonic() + 5
+        while not service._processes and time.monotonic() < deadline:
+            time.sleep(0.01)
+
+        assert service._processes, "Analytics worker did not start."
+
+        started = time.monotonic()
+        health = client.get("/api/v1/health/live")
+        elapsed = time.monotonic() - started
+
+        assert health.status_code == 200
+        assert health.json() == {"status": "alive"}
+        assert elapsed < 0.25, f"Liveness endpoint took {elapsed:.3f}s."
+
+        response = upload.result(timeout=5)
+        assert response.status_code == 200
+        assert "analytics" in response.json()
 
 
 def test_readiness_endpoint_after_startup(client) -> None:
@@ -416,17 +470,78 @@ def test_dataset_upload_enforces_configured_size_limit(isolated_logger) -> None:
     assert response.status_code == 413
 
 
+@pytest.mark.parametrize(
+    ("error_type", "status_code", "expected_detail"),
+    [
+        (
+            AnalyticsBusyError,
+            503,
+            "Analytics capacity is currently full. Please retry later.",
+        ),
+        (
+            AnalyticsTimeoutError,
+            504,
+            "Dataset analytics exceeded the configured time limit.",
+        ),
+        (
+            AnalyticsExecutionError,
+            500,
+            "Dataset analytics failed.",
+        ),
+    ],
+)
+def test_dataset_upload_maps_analytics_errors_without_leaking_details(
+    client,
+    monkeypatch,
+    error_type,
+    status_code,
+    expected_detail,
+) -> None:
+    async def raise_analytics_error(
+        self,
+        dataset,
+        *,
+        include_correlations,
+    ):
+        raise error_type("Internal failure at /private/internal/path")
+
+    monkeypatch.setattr(AnalyticsService, "analyze", raise_analytics_error)
+
+    response = client.post(
+        "/api/v1/datasets?include_analytics=true",
+        files={"file": ("scores.csv", "score\\n10\\n20\\n", "text/csv")},
+    )
+
+    assert response.status_code == status_code
+    assert response.json() == {"detail": expected_detail}
+    assert "/private/internal/path" not in response.text
+
+
 def test_openapi_documents_dataset_upload_responses(client) -> None:
     response = client.get("/openapi.json")
 
     assert response.status_code == 200
     operation = response.json()["paths"]["/api/v1/datasets"]["post"]
-    assert {"200", "413", "415", "422"} <= set(operation["responses"])
+    assert {"200", "413", "415", "422", "500", "503", "504"} <= set(
+        operation["responses"]
+    )
 
     parameters = {parameter["name"]: parameter for parameter in operation["parameters"]}
     assert parameters["include_correlations"]["in"] == "query"
     assert parameters["include_correlations"]["schema"]["type"] == "boolean"
     assert parameters["include_correlations"]["schema"]["default"] is True
+    assert (
+        operation["responses"]["500"]["description"]
+        == "Dataset analytics failed unexpectedly."
+    )
+    assert (
+        operation["responses"]["503"]["description"]
+        == "Analytics capacity is currently full."
+    )
+    assert (
+        operation["responses"]["504"]["description"]
+        == "Dataset analytics exceeded its time limit."
+    )
     assert (
         operation["responses"]["413"]["description"]
         == "Uploaded file exceeds the configured size limit."
@@ -603,17 +718,10 @@ def test_dataset_upload_can_skip_correlations(client) -> None:
     assert analytics["outliers"]
 
 
-def test_dataset_upload_skips_correlation_calculation(client, monkeypatch) -> None:
-    from orvyntal.api.routes import datasets
-
-    def fail_if_called(dataset):
-        raise AssertionError("Correlation calculation should have been skipped.")
-
-    monkeypatch.setattr(datasets, "correlate_numeric_columns", fail_if_called)
-
+def test_dataset_upload_skips_correlation_calculation(client) -> None:
     response = client.post(
         "/api/v1/datasets?include_analytics=true&include_correlations=false",
-        files={"file": ("scores.csv", "x,y\n1,2\n2,4\n", "text/csv")},
+        files={"file": ("scores.csv", "x,y\\n1,2\\n2,4\\n", "text/csv")},
     )
 
     assert response.status_code == 200

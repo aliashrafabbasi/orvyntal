@@ -9,16 +9,11 @@ from typing import Annotated
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 
-from orvyntal.data_intelligence.analytics.correlation import (
-    correlate_numeric_columns,
+from orvyntal.core.analytics_service import (
+    AnalyticsBusyError,
+    AnalyticsExecutionError,
+    AnalyticsTimeoutError,
 )
-from orvyntal.data_intelligence.analytics.descriptive import (
-    describe_numeric_values,
-)
-from orvyntal.data_intelligence.analytics.outliers import (
-    analyze_numeric_outliers,
-)
-from orvyntal.data_intelligence.analytics.profiling import profile_dataset
 from orvyntal.data_intelligence.ingestion.csv_reader import (
     CsvIngestionError,
     read_csv,
@@ -167,6 +162,9 @@ class DatasetIngestionResponse(BaseModel):
         413: {"description": "Uploaded file exceeds the configured size limit."},
         415: {"description": "Unsupported file type. Upload a .csv file."},
         422: {"description": "Request validation failed or the CSV is invalid."},
+        500: {"description": "Dataset analytics failed unexpectedly."},
+        503: {"description": "Analytics capacity is currently full."},
+        504: {"description": "Dataset analytics exceeded its time limit."},
     },
 )
 async def upload_dataset(
@@ -217,46 +215,72 @@ async def upload_dataset(
             )
 
             if include_analytics:
-                profile = profile_dataset(dataset)
+                analytics_service = request.app.state.runtime.analytics_service
+
+                try:
+                    (
+                        profile,
+                        descriptive_statistics,
+                        correlation_analysis,
+                        outlier_analysis,
+                    ) = await analytics_service.analyze(
+                        dataset,
+                        include_correlations=include_correlations,
+                    )
+                except AnalyticsBusyError as exc:
+                    raise HTTPException(
+                        status_code=503,
+                        detail=(
+                            "Analytics capacity is currently full. Please retry later."
+                        ),
+                    ) from exc
+                except AnalyticsTimeoutError as exc:
+                    raise HTTPException(
+                        status_code=504,
+                        detail="Dataset analytics exceeded the configured time limit.",
+                    ) from exc
+                except AnalyticsExecutionError as exc:
+                    raise HTTPException(
+                        status_code=500,
+                        detail="Dataset analytics failed.",
+                    ) from exc
+
+                statistics_by_column = dict(descriptive_statistics)
                 column_analytics = []
 
                 for column in profile.columns:
                     statistics = None
-                    if column.numeric_summary is not None:
-                        result = describe_numeric_values(
-                            record.get(column.name, "") for record in dataset.records
+                    result = statistics_by_column.get(column.name)
+
+                    if result is not None:
+                        statistics = DescriptiveStatisticsResponse(
+                            count=result.count,
+                            invalid_count=result.invalid_count,
+                            total=_format_analytics_decimal(result.total),
+                            mean=_format_analytics_decimal(result.mean),
+                            median=_format_analytics_decimal(result.median),
+                            minimum=_format_analytics_decimal(result.minimum),
+                            maximum=_format_analytics_decimal(result.maximum),
+                            value_range=_format_analytics_decimal(result.value_range),
+                            population_variance=_format_analytics_decimal(
+                                result.population_variance
+                            ),
+                            population_standard_deviation=_format_analytics_decimal(
+                                result.population_standard_deviation
+                            ),
+                            sample_variance=(
+                                _format_analytics_decimal(result.sample_variance)
+                                if result.sample_variance is not None
+                                else None
+                            ),
+                            sample_standard_deviation=(
+                                _format_analytics_decimal(
+                                    result.sample_standard_deviation
+                                )
+                                if result.sample_standard_deviation is not None
+                                else None
+                            ),
                         )
-                        if result is not None:
-                            statistics = DescriptiveStatisticsResponse(
-                                count=result.count,
-                                invalid_count=result.invalid_count,
-                                total=_format_analytics_decimal(result.total),
-                                mean=_format_analytics_decimal(result.mean),
-                                median=_format_analytics_decimal(result.median),
-                                minimum=_format_analytics_decimal(result.minimum),
-                                maximum=_format_analytics_decimal(result.maximum),
-                                value_range=_format_analytics_decimal(
-                                    result.value_range
-                                ),
-                                population_variance=_format_analytics_decimal(
-                                    result.population_variance
-                                ),
-                                population_standard_deviation=_format_analytics_decimal(
-                                    result.population_standard_deviation
-                                ),
-                                sample_variance=(
-                                    _format_analytics_decimal(result.sample_variance)
-                                    if result.sample_variance is not None
-                                    else None
-                                ),
-                                sample_standard_deviation=(
-                                    _format_analytics_decimal(
-                                        result.sample_standard_deviation
-                                    )
-                                    if result.sample_standard_deviation is not None
-                                    else None
-                                ),
-                            )
 
                     column_analytics.append(
                         ColumnAnalyticsResponse(
@@ -285,23 +309,24 @@ async def upload_dataset(
                         )
                     )
 
-                correlations = []
-                if include_correlations:
-                    correlation_analysis = correlate_numeric_columns(dataset)
-                    correlations = [
-                        CorrelationPairResponse(
-                            column_x=pair.column_x,
-                            column_y=pair.column_y,
-                            observation_count=pair.observation_count,
-                            correlation=(
-                                _format_analytics_decimal(pair.correlation)
-                                if pair.correlation is not None
-                                else None
-                            ),
-                        )
-                        for pair in correlation_analysis.pairs
-                    ]
-                outlier_analysis = analyze_numeric_outliers(dataset)
+                correlations = [
+                    CorrelationPairResponse(
+                        column_x=pair.column_x,
+                        column_y=pair.column_y,
+                        observation_count=pair.observation_count,
+                        correlation=(
+                            _format_analytics_decimal(pair.correlation)
+                            if pair.correlation is not None
+                            else None
+                        ),
+                    )
+                    for pair in (
+                        correlation_analysis.pairs
+                        if correlation_analysis is not None
+                        else ()
+                    )
+                ]
+
                 outlier_columns = [
                     ColumnOutlierResponse(
                         column_name=column.column_name,
