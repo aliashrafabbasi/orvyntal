@@ -28,6 +28,16 @@ class AnalyticsExecutionError(Exception):
 WorkerTarget = Callable[[Connection, CsvDataset, bool], None]
 
 
+async def _await_task_completion(task: asyncio.Task[Any]) -> Any:
+    """Wait for a task to finish despite repeated caller cancellation."""
+    while True:
+        try:
+            return await asyncio.shield(task)
+        except asyncio.CancelledError:
+            if task.done():
+                return task.result()
+
+
 class AnalyticsService:
     """Run CPU-bound analytics in bounded, independently reclaimable processes."""
 
@@ -59,14 +69,21 @@ class AnalyticsService:
         include_correlations: bool,
     ) -> tuple[Any, ...]:
         """Run analytics without blocking the application's event loop."""
-        with self._condition:
-            if self._closed:
-                raise AnalyticsExecutionError("Analytics service is unavailable.")
+        admission = asyncio.create_task(asyncio.to_thread(self._acquire_slot))
 
-            if self._active >= self._max_concurrent_jobs:
-                raise AnalyticsBusyError
-
-            self._active += 1
+        try:
+            await asyncio.shield(admission)
+        except asyncio.CancelledError:
+            try:
+                await _await_task_completion(admission)
+            except Exception:
+                pass
+            else:
+                release_task = asyncio.create_task(
+                    asyncio.to_thread(self._release_slot)
+                )
+                await _await_task_completion(release_task)
+            raise
 
         cancellation = threading.Event()
 
@@ -80,7 +97,7 @@ class AnalyticsService:
                 )
             )
         except BaseException:
-            self._release_slot()
+            await asyncio.to_thread(self._release_slot)
             raise
 
         try:
@@ -88,7 +105,7 @@ class AnalyticsService:
         except asyncio.CancelledError:
             cancellation.set()
             try:
-                await asyncio.shield(supervisor)
+                await _await_task_completion(supervisor)
             except Exception:
                 pass
             raise
@@ -122,9 +139,13 @@ class AnalyticsService:
                 if self._closed or cancellation.is_set():
                     raise AnalyticsExecutionError("Analytics service is shutting down.")
 
-                process.start()
+            process.start()
+
+            with self._condition:
                 self._processes[id(process)] = process
                 registered = True
+                if self._closed or cancellation.is_set():
+                    raise AnalyticsExecutionError("Analytics service is shutting down.")
 
             sender.close()
             sender = None
@@ -213,6 +234,17 @@ class AnalyticsService:
                         pass
                     finally:
                         self._release_slot()
+
+    def _acquire_slot(self) -> None:
+        """Admit one analytics job without blocking the event loop."""
+        with self._condition:
+            if self._closed:
+                raise AnalyticsExecutionError("Analytics service is unavailable.")
+
+            if self._active >= self._max_concurrent_jobs:
+                raise AnalyticsBusyError
+
+            self._active += 1
 
     def _release_slot(self) -> None:
         """Release one admitted analytics slot."""

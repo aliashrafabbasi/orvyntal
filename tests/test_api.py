@@ -1,6 +1,8 @@
 """Tests for the ORVYNTAL FastAPI application."""
 
+import asyncio
 import logging
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from fractions import Fraction
@@ -9,6 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from orvyntal import __version__
+from orvyntal.api.routes import datasets as dataset_routes
 from orvyntal.api.routes.datasets import _format_analytics_fraction
 from orvyntal.app import create_app
 from orvyntal.config.settings import Settings
@@ -55,6 +58,42 @@ def client(isolated_logger):
 def test_application_metadata(client) -> None:
     assert client.app.title == "ORVYNTAL-Test"
     assert client.app.version == __version__
+
+
+def test_csv_parse_waits_for_thread_after_cancellation(monkeypatch, tmp_path):
+    started = threading.Event()
+    release = threading.Event()
+    csv_path = tmp_path / "dataset.csv"
+    csv_path.write_text("value\\n1\\n", encoding="utf-8")
+
+    def blocking_reader(path, *, max_rows, max_columns):
+        started.set()
+        if not release.wait(timeout=5):
+            raise TimeoutError("Test parser was not released.")
+        return object()
+
+    monkeypatch.setattr(dataset_routes, "read_csv", blocking_reader)
+
+    async def scenario():
+        task = asyncio.create_task(
+            dataset_routes._read_csv_in_thread(
+                csv_path,
+                max_rows=10,
+                max_columns=10,
+            )
+        )
+        try:
+            assert await asyncio.to_thread(started.wait, 2)
+            task.cancel()
+            await asyncio.sleep(0)
+            assert not task.done(), "Cancellation must wait for the parser thread."
+        finally:
+            release.set()
+
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(scenario())
 
 
 def test_liveness_endpoint(client) -> None:
@@ -738,3 +777,43 @@ def test_dataset_upload_omits_analytics_when_disabled_with_correlations_flag(
 
     assert response.status_code == 200
     assert "analytics" not in response.json()
+
+
+def test_repeated_cancellation_waits_for_csv_parser(monkeypatch, tmp_path):
+    started = threading.Event()
+    release = threading.Event()
+    csv_path = tmp_path / "dataset.csv"
+    csv_path.write_text("value\n1\n", encoding="utf-8")
+
+    def blocking_reader(path, *, max_rows, max_columns):
+        started.set()
+        if not release.wait(timeout=5):
+            raise TimeoutError("Test parser was not released.")
+        return object()
+
+    monkeypatch.setattr(dataset_routes, "read_csv", blocking_reader)
+
+    async def scenario():
+        task = asyncio.create_task(
+            dataset_routes._read_csv_in_thread(
+                csv_path,
+                max_rows=10,
+                max_columns=10,
+            )
+        )
+
+        try:
+            assert await asyncio.to_thread(started.wait, 2)
+            task.cancel()
+            await asyncio.sleep(0)
+            task.cancel()
+            await asyncio.sleep(0)
+
+            assert not task.done(), "Repeated cancellation interrupted parser cleanup."
+        finally:
+            release.set()
+
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(scenario())

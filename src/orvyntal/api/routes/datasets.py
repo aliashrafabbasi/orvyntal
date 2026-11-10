@@ -1,10 +1,11 @@
 """Dataset ingestion API routes."""
 
+import asyncio
 from decimal import Decimal
 from fractions import Fraction
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel
@@ -23,6 +24,40 @@ router = APIRouter(prefix="/datasets", tags=["datasets"])
 
 CHUNK_SIZE = 64 * 1024
 PREVIEW_ROWS = 5
+
+
+async def _await_task_completion(task: asyncio.Task[Any]) -> Any:
+    """Wait for a task to finish despite repeated caller cancellation."""
+    while True:
+        try:
+            return await asyncio.shield(task)
+        except asyncio.CancelledError:
+            if task.done():
+                return task.result()
+
+
+async def _read_csv_in_thread(
+    path: Path,
+    *,
+    max_rows: int,
+    max_columns: int,
+):
+    parse_task = asyncio.create_task(
+        asyncio.to_thread(
+            read_csv,
+            path,
+            max_rows=max_rows,
+            max_columns=max_columns,
+        )
+    )
+    try:
+        return await asyncio.shield(parse_task)
+    except asyncio.CancelledError:
+        try:
+            await _await_task_completion(parse_task)
+        except Exception:
+            pass
+        raise
 
 
 def _format_analytics_decimal(value: Decimal) -> str:
@@ -199,7 +234,7 @@ async def upload_dataset(
                     destination.write(chunk)
 
             try:
-                dataset = read_csv(
+                dataset = await _read_csv_in_thread(
                     temporary_path,
                     max_rows=settings.max_dataset_rows,
                     max_columns=settings.max_dataset_columns,
