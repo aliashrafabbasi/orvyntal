@@ -292,7 +292,7 @@ flowchart TD
 **Responsibilities.** The API layer validates and authorizes requests; application services coordinate workflows; analytics and ML handle tabular data; the LLM layer isolates providers; the RAG subsystem owns documents, embeddings, vectors, and citations; the agent runtime proposes actions while the policy engine authorizes them.
 **Validation and policy.** Request validation and authorization occur at the API boundary; structured-output and citation validation follow LLM calls; the policy engine gates every tool call.
 **Failures.** Failures return typed errors to the caller; no partial state is treated as success.
-**Status.** The architecture is the intended target. The API foundation, CSV dataset ingestion, dataset profiling, and descriptive statistics have partial implementations; remaining components are planned. Databases and the dashboard are added only when a real use case exists.
+**Status.** Milestone 1 data-intelligence components are implemented: CSV ingestion and validation, profiling, descriptive statistics, correlation and outlier analysis, cleaning, feature preparation, and deterministic Markdown profile reports. The API foundation is partial; later ML, LLM, RAG, agent, persistence, and dashboard components remain planned. Databases and the dashboard are added only when a real use case exists.
 
 ### Diagram B: Dataset intelligence pipeline
 
@@ -327,7 +327,7 @@ flowchart TD
 **Responsibilities.** Ingestion validates and infers schema; analytics detects quality issues; cleaning is applied only with explicit rules or user confirmation where decisions alter data meaning.
 **Validation.** File checks first, then schema and quality checks, then sufficiency and support checks.
 **Failures.** Each branch ends in an explicit, explained outcome rather than a silent default. Cleaning decisions are recorded in the report.
-**Status.** Partially implemented: CSV upload, input validation, schema inference, profiling, and descriptive statistics are available. Cleaning decisions, full EDA, feature preparation, ML experiments, and deterministic report generation remain planned.
+**Status.** Milestone 1 data pipeline is implemented for CSV ingestion and validation, schema inference, profiling, descriptive statistics, correlation and outlier analysis, cleaning, feature preparation, and deterministic Markdown profile reports. Visualization and ML experiments remain planned.
 
 ### Diagram C: Document ingestion and FAISS indexing
 
@@ -536,9 +536,9 @@ sequenceDiagram
 | Component | Planned capability | Status | Verification |
 |---|---|---|---|
 | Foundation | Minimal Python packaging and automated tests | Implemented | Local and clean-checkout verification: 134 pytest tests, Ruff lint, Ruff formatting, and wheel build pass; fresh wheel installation and imports verified |
-| Analytics | CSV dataset profiling and initial quality analysis | Partially implemented | Dataset profiling tests; broader EDA remains planned |
-| Statistics | Descriptive statistics | Partially implemented | Descriptive-statistics and numeric-policy tests; inferential analysis remains planned |
-| ML | Training and evaluation | Planned | ML tests |
+| Analytics | CSV profiling, quality analysis, correlation and outlier analysis | Implemented | Profiling, correlation, outlier, and analytics tests |
+| Statistics | Descriptive statistics | Implemented | Descriptive-statistics and numeric-policy tests; inferential analysis remains out of scope |
+| Cleaning | Deterministic missing-value handling and duplicate removal | Implemented | Cleaning engine tests and audit-report assertions |\n| Feature preparation | Numeric extraction, categorical encoding, and scaling | Implemented | Numeric, categorical, and scaler tests |\n| Reports | Deterministic Markdown dataset profile reports | Implemented | Markdown report tests, including reproducibility and escaping |\n| ML | Training and evaluation | Planned | ML tests |
 | Deep learning | CPU-friendly PyTorch experiment | Planned | Training tests |
 | LLM layer | Provider interface, structured output | Planned | Mock-provider tests |
 | Embeddings | Text embedding generation | Planned | Embedding tests |
@@ -812,7 +812,7 @@ GitHub contact route.
 
 ## 16. Known limitations
 
-- The API foundation, CSV dataset ingestion and validation, and initial profiling/descriptive statistics have implemented code and automated tests. Broader EDA, ML/DL, LLM, RAG, agents, persistence, and dashboard capabilities remain planned. Milestone 0's clean-checkout integration gate has passed locally. Existing remote CI runs have passed on earlier commits; the current uncommitted changes have not yet been tested by remote CI.
+- Milestones 0 and 1 have passed their local test and quality checks. Milestone 1 includes CSV ingestion and validation, profiling, descriptive statistics, correlation and outlier analysis, cleaning, feature preparation, and deterministic Markdown profile reports. Plot-based visualization, ML/DL, LLM, RAG, agents, persistence, and the dashboard remain planned. The current uncommitted changes have not yet been tested by remote CI.
 - RAG cannot guarantee perfect retrieval or eliminate hallucinations.
 - FAISS alone provides no metadata filtering, authorization, or transactions.
 - No authentication or multi-user isolation exists.
