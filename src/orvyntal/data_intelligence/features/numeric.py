@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Literal
 
-from orvyntal.data_intelligence.analytics.numeric import parse_numeric_value
+from orvyntal.data_intelligence.analytics.parsed import parse_dataset
 from orvyntal.data_intelligence.ingestion.csv_reader import CsvDataset
 
 
@@ -51,19 +51,19 @@ def extract_numeric_features(
 
     selected_columns = tuple(header for header in dataset.headers if header in columns)
 
+    parsed_dataset = parse_dataset(dataset, selected_columns)
+    parsed_columns = parsed_dataset.by_name
+
     extracted_rows: list[tuple[Decimal, ...]] = []
     row_indices: list[int] = []
     dropped_row_indices: list[int] = []
 
-    for row_index, record in enumerate(dataset.records):
+    for row_index in range(len(dataset.records)):
         numeric_row: list[Decimal] = []
         invalid_column: str | None = None
 
         for column in selected_columns:
-            raw_value = record.get(column)
-            number = (
-                parse_numeric_value(raw_value) if isinstance(raw_value, str) else None
-            )
+            number = parsed_columns[column].values[row_index]
 
             if number is None:
                 invalid_column = column

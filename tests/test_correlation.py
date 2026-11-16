@@ -164,3 +164,22 @@ def test_columns_are_paired_in_header_order() -> None:
     result = correlate_numeric_columns(dataset)
 
     assert [(pair.column_x, pair.column_y) for pair in result.pairs] == [("z", "a")]
+
+
+def test_parsed_correlation_matches_public_api() -> None:
+    from orvyntal.data_intelligence.analytics.correlation import (
+        correlate_parsed_dataset,
+    )
+    from orvyntal.data_intelligence.analytics.parsed import parse_dataset
+
+    dataset = make_dataset(
+        ("x", "y"),
+        (("1", "10"), ("2", ""), ("3", "30"), ("unknown", "40"), ("5", "50")),
+    )
+
+    parsed = parse_dataset(dataset)
+    result = correlate_parsed_dataset(parsed)
+
+    assert result == correlate_numeric_columns(dataset)
+    assert result.pairs[0].observation_count == 3
+    assert result.pairs[0].correlation == Decimal("1.000000")

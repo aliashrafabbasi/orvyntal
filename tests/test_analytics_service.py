@@ -152,13 +152,38 @@ def test_analytics_timeout_reclaims_worker_and_releases_capacity(dataset):
     asyncio.run(scenario())
 
 
+def test_worker_parses_dataset_exactly_once(dataset, monkeypatch):
+    original_parser = analytics_worker.parse_dataset
+    calls = []
+
+    def tracking_parser(source):
+        calls.append(source)
+        return original_parser(source)
+
+    monkeypatch.setattr(analytics_worker, "parse_dataset", tracking_parser)
+
+    receiver, sender = Pipe(duplex=False)
+    try:
+        analytics_worker.run_analytics_worker(
+            sender,
+            dataset,
+            include_correlations=True,
+        )
+        status, _result = receiver.recv()
+    finally:
+        receiver.close()
+
+    assert status == "ok"
+    assert calls == [dataset]
+
+
 def test_worker_skips_correlation_calculation_when_disabled(dataset, monkeypatch):
     def fail_if_called(_dataset):
         raise AssertionError("Correlation calculation should have been skipped.")
 
     monkeypatch.setattr(
         analytics_worker,
-        "correlate_numeric_columns",
+        "correlate_parsed_dataset",
         fail_if_called,
     )
 

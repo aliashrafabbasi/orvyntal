@@ -4,7 +4,12 @@ from dataclasses import dataclass
 from decimal import Decimal
 from fractions import Fraction
 
-from orvyntal.data_intelligence.analytics.numeric import parse_numeric_value
+from orvyntal.data_intelligence.analytics.parsed import (
+    ParsedColumn,
+    ParsedDataset,
+    parse_dataset,
+    scale_decimal_values,
+)
 from orvyntal.data_intelligence.ingestion.csv_reader import CsvDataset
 
 
@@ -39,44 +44,41 @@ class OutlierAnalysis:
     columns: tuple[ColumnOutlierAnalysis, ...]
 
 
-def _median(values: list[Fraction]) -> Fraction:
-    """Return the exact median of a non-empty sorted sequence."""
+def _median_scaled(values: list[int]) -> Fraction:
+    """Return the exact median of a non-empty sorted integer sequence."""
     middle = len(values) // 2
     if len(values) % 2:
-        return values[middle]
-    return (values[middle - 1] + values[middle]) / 2
+        return Fraction(values[middle])
+    return Fraction(values[middle - 1] + values[middle], 2)
 
 
-def _analyze_column(
-    dataset: CsvDataset,
-    column_name: str,
+def _scaled_fraction(
+    value: Fraction,
+    exponent: int,
+) -> Fraction:
+    """Convert a rational in scaled-integer units to its exact decimal value."""
+    if exponent >= 0:
+        return value * 10**exponent
+    return value / 10**-exponent
+
+
+def _analyze_parsed_column(
+    column: ParsedColumn,
 ) -> ColumnOutlierAnalysis:
-    """Analyze one column without modifying its source records."""
-    valid: list[tuple[int, Decimal, Fraction]] = []
-    missing_count = 0
-    invalid_count = 0
-
-    for row_index, record in enumerate(dataset.records):
-        raw_value = record[column_name]
-        if not raw_value.strip():
-            missing_count += 1
-            continue
-
-        value = parse_numeric_value(raw_value)
-        if value is None:
-            invalid_count += 1
-            continue
-
-        valid.append((row_index, value, Fraction(value)))
-
+    """Analyze one shared parsed column without modifying source records."""
+    valid = [
+        (row_index, value)
+        for row_index, value in enumerate(column.values)
+        if value is not None
+    ]
     observation_count = len(valid)
 
     if observation_count < 2:
         return ColumnOutlierAnalysis(
-            column_name=column_name,
+            column_name=column.name,
             observation_count=observation_count,
-            missing_count=missing_count,
-            invalid_count=invalid_count,
+            missing_count=column.missing_count,
+            invalid_count=column.invalid_count,
             q1=None,
             q3=None,
             iqr=None,
@@ -85,36 +87,57 @@ def _analyze_column(
             outliers=(),
         )
 
-    ordered = sorted(valid, key=lambda item: item[2])
-    values = [item[2] for item in ordered]
+    scaled, exponent = scale_decimal_values([value for _, value in valid])
+    ordered = sorted(
+        zip(valid, scaled, strict=True),
+        key=lambda item: item[1],
+    )
+    values = [scaled_value for _, scaled_value in ordered]
     midpoint = observation_count // 2
 
     lower_half = values[:midpoint]
     upper_half = values[(observation_count + 1) // 2 :]
 
-    q1 = _median(lower_half)
-    q3 = _median(upper_half)
-    iqr = q3 - q1
-    lower_bound = q1 - Fraction(3, 2) * iqr
-    upper_bound = q3 + Fraction(3, 2) * iqr
+    q1_scaled = _median_scaled(lower_half)
+    q3_scaled = _median_scaled(upper_half)
+    iqr_scaled = q3_scaled - q1_scaled
+    lower_bound_scaled = q1_scaled - Fraction(3, 2) * iqr_scaled
+    upper_bound_scaled = q3_scaled + Fraction(3, 2) * iqr_scaled
+
+    q1 = _scaled_fraction(q1_scaled, exponent)
+    q3 = _scaled_fraction(q3_scaled, exponent)
+    iqr = _scaled_fraction(iqr_scaled, exponent)
+    lower_bound = _scaled_fraction(lower_bound_scaled, exponent)
+    upper_bound = _scaled_fraction(upper_bound_scaled, exponent)
 
     outliers = tuple(
         OutlierObservation(row_index=row_index, value=value)
-        for row_index, value, exact_value in valid
-        if exact_value < lower_bound or exact_value > upper_bound
+        for (row_index, value), scaled_value in zip(valid, scaled, strict=True)
+        if (
+            scaled_value * lower_bound_scaled.denominator < lower_bound_scaled.numerator
+            or scaled_value * upper_bound_scaled.denominator
+            > upper_bound_scaled.numerator
+        )
     )
 
     return ColumnOutlierAnalysis(
-        column_name=column_name,
+        column_name=column.name,
         observation_count=observation_count,
-        missing_count=missing_count,
-        invalid_count=invalid_count,
+        missing_count=column.missing_count,
+        invalid_count=column.invalid_count,
         q1=q1,
         q3=q3,
         iqr=iqr,
         lower_bound=lower_bound,
         upper_bound=upper_bound,
         outliers=outliers,
+    )
+
+
+def analyze_parsed_outliers(dataset: ParsedDataset) -> OutlierAnalysis:
+    """Analyze every shared parsed column using Tukey's 1.5-IQR rule."""
+    return OutlierAnalysis(
+        columns=tuple(_analyze_parsed_column(column) for column in dataset.columns)
     )
 
 
@@ -125,8 +148,4 @@ def analyze_numeric_outliers(dataset: CsvDataset) -> OutlierAnalysis:
     Columns with fewer than two valid observations have no quartile bounds.
     Source records are never changed.
     """
-    return OutlierAnalysis(
-        columns=tuple(
-            _analyze_column(dataset, column_name) for column_name in dataset.headers
-        )
-    )
+    return analyze_parsed_outliers(parse_dataset(dataset))

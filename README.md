@@ -713,12 +713,33 @@ curl -X POST "http://127.0.0.1:8000/api/v1/datasets?include_analytics=true&inclu
 
 `include_correlations` has no effect when `include_analytics=false`.
 
+### Numeric analytics policy
+
+Numeric analytics use a fixed, deterministic input policy:
+
+| Constraint | Supported range |
+|---|---|
+| Minimum adjusted exponent | `-1000` |
+| Maximum adjusted exponent | `+1000` |
+| Maximum coefficient digits | `1000` |
+| Non-finite values | Rejected (`NaN`, `Infinity`, and `-Infinity`) |
+
+Values outside these limits are treated as invalid numeric values during analytics. Blank values are handled separately as missing data. The coefficient-digit limit applies to the decimal coefficient, not specifically to significant digits.
+
+These limits are enforced by the shared numeric parser and are not user-configurable. Exact decimal and rational arithmetic is used where required to avoid unnecessary floating-point precision loss.
+
 Run the local quality checks:
 
 ```bash
 python -m pytest -q
 ruff check .
 ruff format --check .
+```
+
+Optional performance and resource benchmarks (excluded from routine test runs):
+
+```bash
+python -m pytest -q -m slow -s
 ```
 
 The package and these foundation checks have previously passed locally. Re-run them after changes; this does not imply that the future AI capabilities are implemented. Keep the initial install lightweight, defer PyTorch, provider SDKs, and databases until their relevant clusters, and document credential or network requirements when introduced.

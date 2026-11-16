@@ -4,7 +4,11 @@ from dataclasses import dataclass
 from decimal import Decimal
 from fractions import Fraction
 
-from orvyntal.data_intelligence.analytics.numeric import parse_numeric_value
+from orvyntal.data_intelligence.analytics.parsed import (
+    ParsedDataset,
+    parse_dataset,
+    scale_decimal_values,
+)
 from orvyntal.data_intelligence.ingestion.csv_reader import CsvDataset
 
 _SUMMARY_QUANTUM = Decimal("0.000001")
@@ -62,11 +66,6 @@ class DatasetProfile:
     columns: tuple[ColumnProfile, ...]
 
 
-def _parse_decimal(value: str) -> Decimal | None:
-    """Return a policy-compliant finite Decimal, or None."""
-    return parse_numeric_value(value)
-
-
 def _round_fraction(value: Fraction) -> Decimal:
     """Round an exact rational to six decimal places using half-even."""
     places = abs(_SUMMARY_QUANTUM.as_tuple().exponent)
@@ -113,15 +112,31 @@ def _numeric_summary(numbers: list[Decimal | None]) -> NumericSummary | None:
         return None
 
     count = len(valid)
-    exact_numbers = [Fraction(number) for number in valid]
+    scaled, exponent = scale_decimal_values(valid)
+    scaled_total = sum(scaled)
     midpoint = count // 2
 
     if count % 2:
-        exact_median = exact_numbers[midpoint]
+        median_numerator = scaled[midpoint]
+        median_denominator = 1
     else:
-        exact_median = (exact_numbers[midpoint - 1] + exact_numbers[midpoint]) / 2
+        median_numerator = scaled[midpoint - 1] + scaled[midpoint]
+        median_denominator = 2
 
-    exact_mean = sum(exact_numbers, Fraction(0)) / count
+    if exponent >= 0:
+        exact_mean = Fraction(scaled_total * 10**exponent, count)
+        exact_median = Fraction(
+            median_numerator * 10**exponent,
+            median_denominator,
+        )
+    else:
+        decimal_scale = 10**-exponent
+        exact_mean = Fraction(scaled_total, count * decimal_scale)
+        exact_median = Fraction(
+            median_numerator,
+            median_denominator * decimal_scale,
+        )
+
     mean = _round_fraction(exact_mean)
     median = _round_fraction(exact_median)
 
@@ -168,34 +183,34 @@ def _categorical_summary(
     )
 
 
-def profile_dataset(dataset: CsvDataset) -> DatasetProfile:
-    """Profile a CSV dataset without changing its records.
-
-    Empty and whitespace-only cells count as missing. Numeric summaries include
-    finite Decimal values only. Other non-missing values count as invalid when
-    at least one value in that column can be parsed as a number.
-    """
+def profile_parsed_dataset(dataset: ParsedDataset) -> DatasetProfile:
+    """Profile a dataset using its shared parsed numeric representation."""
     row_count = len(dataset.records)
     column_profiles: list[ColumnProfile] = []
+    header_indices = {header: index for index, header in enumerate(dataset.headers)}
 
-    for header in dataset.headers:
-        values = [record.get(header, "") for record in dataset.records]
-        missing_count = sum(not value.strip() for value in values)
+    for column in dataset.columns:
+        column_index = header_indices[column.name]
+        values = [record[column_index] for record in dataset.records]
         non_missing = [value for value in values if value.strip()]
-        parsed = [_parse_decimal(value) for value in non_missing]
-        inferred_type = _infer_type(non_missing, parsed)
+        numbers = [
+            number
+            for value, number in zip(values, column.values, strict=True)
+            if value.strip()
+        ]
+        inferred_type = _infer_type(non_missing, numbers)
 
         column_profiles.append(
             ColumnProfile(
-                name=header,
+                name=column.name,
                 inferred_type=inferred_type,
-                missing_count=missing_count,
+                missing_count=column.missing_count,
                 missing_percentage=(
-                    _round_fraction(Fraction(missing_count * 100, row_count))
+                    _round_fraction(Fraction(column.missing_count * 100, row_count))
                     if row_count
                     else Decimal("0.000000")
                 ),
-                numeric_summary=_numeric_summary(parsed),
+                numeric_summary=_numeric_summary(numbers),
                 categorical_summary=_categorical_summary(
                     non_missing,
                     inferred_type,
@@ -205,8 +220,7 @@ def profile_dataset(dataset: CsvDataset) -> DatasetProfile:
 
     seen_rows: set[tuple[str, ...]] = set()
     duplicate_row_count = 0
-    for record in dataset.records:
-        row_key = tuple(record.get(header, "") for header in dataset.headers)
+    for row_key in dataset.records:
         if row_key in seen_rows:
             duplicate_row_count += 1
         else:
@@ -218,3 +232,13 @@ def profile_dataset(dataset: CsvDataset) -> DatasetProfile:
         duplicate_row_count=duplicate_row_count,
         columns=tuple(column_profiles),
     )
+
+
+def profile_dataset(dataset: CsvDataset) -> DatasetProfile:
+    """Profile a CSV dataset without changing its records.
+
+    Empty and whitespace-only cells count as missing. Numeric summaries include
+    finite Decimal values only. Other non-missing values count as invalid when
+    at least one value in that column can be parsed as a number.
+    """
+    return profile_parsed_dataset(parse_dataset(dataset))

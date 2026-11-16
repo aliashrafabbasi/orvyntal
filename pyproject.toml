@@ -22,7 +22,10 @@ packages = ["src/orvyntal"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra"
+addopts = "-ra -m 'not slow'"
+markers = [
+    "slow: performance and resource benchmarks excluded from routine test runs",
+]
 
 [tool.ruff]
 line-length = 88

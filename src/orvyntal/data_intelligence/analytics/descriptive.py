@@ -7,6 +7,10 @@ from fractions import Fraction
 from math import isqrt
 
 from orvyntal.data_intelligence.analytics.numeric import parse_numeric_value
+from orvyntal.data_intelligence.analytics.parsed import (
+    ParsedColumn,
+    scale_decimal_values,
+)
 
 _PLACES = 6
 _SCALE = 10**_PLACES
@@ -81,6 +85,96 @@ def _round_sqrt_fraction(value: Fraction) -> Decimal:
     return _decimal_from_scaled_integer(floor_root)
 
 
+def _scaled_fraction(
+    numerator: int,
+    denominator: int,
+    exponent: int,
+) -> Fraction:
+    """Build an exact rational from an integer and a decimal exponent."""
+    if exponent >= 0:
+        return Fraction(numerator * 10**exponent, denominator)
+    return Fraction(numerator, denominator * 10**-exponent)
+
+
+def _describe_parsed_values(
+    valid: list[Decimal],
+    invalid_count: int,
+) -> DescriptiveStatistics | None:
+    """Calculate exact statistics using shared-scale integer arithmetic."""
+    if not valid:
+        return None
+
+    ordered = sorted(valid)
+    scaled, exponent = scale_decimal_values(ordered)
+    count = len(scaled)
+    scaled_total = sum(scaled)
+    total = _scaled_fraction(scaled_total, 1, exponent)
+    mean = _scaled_fraction(scaled_total, count, exponent)
+
+    midpoint = count // 2
+    if count % 2:
+        median = _scaled_fraction(scaled[midpoint], 1, exponent)
+    else:
+        median = _scaled_fraction(
+            scaled[midpoint - 1] + scaled[midpoint],
+            2,
+            exponent,
+        )
+
+    squared_deviation_sum = sum(
+        (number * count - scaled_total) ** 2 for number in scaled
+    )
+    population_variance = _scaled_fraction(
+        squared_deviation_sum,
+        count**3,
+        exponent * 2,
+    )
+    sample_variance = (
+        _scaled_fraction(
+            squared_deviation_sum,
+            count**2 * (count - 1),
+            exponent * 2,
+        )
+        if count >= 2
+        else None
+    )
+
+    value_range = _scaled_fraction(
+        scaled[-1] - scaled[0],
+        1,
+        exponent,
+    )
+
+    return DescriptiveStatistics(
+        count=count,
+        invalid_count=invalid_count,
+        total=_round_fraction(total),
+        mean=_round_fraction(mean),
+        median=_round_fraction(median),
+        minimum=ordered[0],
+        maximum=ordered[-1],
+        value_range=_round_fraction(value_range),
+        population_variance=_round_fraction(population_variance),
+        population_standard_deviation=_round_sqrt_fraction(population_variance),
+        sample_variance=(
+            _round_fraction(sample_variance) if sample_variance is not None else None
+        ),
+        sample_standard_deviation=(
+            _round_sqrt_fraction(sample_variance)
+            if sample_variance is not None
+            else None
+        ),
+    )
+
+
+def describe_parsed_column(
+    column: ParsedColumn,
+) -> DescriptiveStatistics | None:
+    """Describe a column using its shared parsed representation."""
+    valid = [number for number in column.values if number is not None]
+    return _describe_parsed_values(valid, column.invalid_count)
+
+
 def describe_numeric_values(
     values: Iterable[str],
 ) -> DescriptiveStatistics | None:
@@ -103,54 +197,4 @@ def describe_numeric_values(
         else:
             valid.append(number)
 
-    if not valid:
-        return None
-
-    exact = sorted(Fraction(number) for number in valid)
-    count = len(exact)
-    total = sum(exact, Fraction(0))
-    mean = total / count
-    midpoint = count // 2
-
-    if count % 2:
-        median = exact[midpoint]
-    else:
-        median = (exact[midpoint - 1] + exact[midpoint]) / 2
-
-    population_variance = (
-        sum(((number - mean) ** 2 for number in exact), Fraction(0)) / count
-    )
-    sample_variance = (
-        sum(((number - mean) ** 2 for number in exact), Fraction(0)) / (count - 1)
-        if count >= 2
-        else None
-    )
-
-    minimum = valid[0]
-    maximum = valid[0]
-    for number in valid[1:]:
-        if number < minimum:
-            minimum = number
-        if number > maximum:
-            maximum = number
-
-    return DescriptiveStatistics(
-        count=count,
-        invalid_count=invalid_count,
-        total=_round_fraction(total),
-        mean=_round_fraction(mean),
-        median=_round_fraction(median),
-        minimum=minimum,
-        maximum=maximum,
-        value_range=_round_fraction(exact[-1] - exact[0]),
-        population_variance=_round_fraction(population_variance),
-        population_standard_deviation=_round_sqrt_fraction(population_variance),
-        sample_variance=(
-            _round_fraction(sample_variance) if sample_variance is not None else None
-        ),
-        sample_standard_deviation=(
-            _round_sqrt_fraction(sample_variance)
-            if sample_variance is not None
-            else None
-        ),
-    )
+    return _describe_parsed_values(valid, invalid_count)

@@ -5,9 +5,11 @@ from fractions import Fraction
 
 import pytest
 
+from orvyntal.data_intelligence.analytics.parsed import parse_dataset
 from orvyntal.data_intelligence.analytics.profiling import (
     _round_fraction,
     profile_dataset,
+    profile_parsed_dataset,
 )
 from orvyntal.data_intelligence.ingestion.csv_reader import CsvDataset
 
@@ -132,6 +134,39 @@ def test_type_inference_is_conservative(
     )
 
     assert profile_dataset(dataset).columns[0].inferred_type == expected_type
+
+
+def test_profile_uses_immutable_snapshot_after_source_mutation() -> None:
+    dataset = CsvDataset(
+        headers=("value", "label"),
+        records=(
+            {"value": "1", "label": "A"},
+            {"value": "2", "label": "B"},
+            {"value": "3", "label": "C"},
+        ),
+    )
+    parsed = parse_dataset(dataset)
+
+    dataset.records[1]["value"] = ""
+    dataset.records[1]["label"] = "A"
+    dataset.records[2]["value"] = "1"
+    dataset.records[2]["label"] = "A"
+
+    profile = profile_parsed_dataset(parsed)
+    value_column = profile.columns[0]
+
+    assert parsed.records == (
+        ("1", "A"),
+        ("2", "B"),
+        ("3", "C"),
+    )
+    assert profile.row_count == 3
+    assert profile.column_count == 2
+    assert profile.duplicate_row_count == 0
+    assert value_column.missing_count == 0
+    assert value_column.numeric_summary is not None
+    assert value_column.numeric_summary.count == 3
+    assert value_column.numeric_summary.mean == Decimal("2.000000")
 
 
 def test_profiling_does_not_mutate_dataset_records() -> None:
